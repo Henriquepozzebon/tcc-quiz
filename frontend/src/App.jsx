@@ -10,6 +10,9 @@ function App() {
   const [statusApi, setStatusApi] = useState("Verificando API...");
   const [usuario, setUsuario] = useState(null);
   const [ranking, setRanking] = useState([]);
+  const [showParabens, setShowParabens] = useState(false);
+  const [nome, setNome] = useState("Jogador");
+  const [avatarColor, setAvatarColor] = useState("#a3a3ff");
 
   const pastel = {
     fundo: "rgb(245, 245, 245)",
@@ -50,6 +53,28 @@ function App() {
         body: JSON.stringify({ email, senha }),
       });
       const data = await res.json();
+
+      // Mensagens de erro para login
+      if (
+        isLogin &&
+        data.mensagem &&
+        (data.mensagem.toLowerCase().includes("não encontrado") ||
+          data.mensagem.toLowerCase().includes("senha incorreta"))
+      ) {
+        setMensagem(data.mensagem);
+        return;
+      }
+
+      // Mensagem para cadastro já existente
+      if (
+        !isLogin &&
+        data.mensagem &&
+        data.mensagem.toLowerCase().includes("já cadastrado")
+      ) {
+        setMensagem("E-mail já cadastrado. Faça login.");
+        setIsLogin(true);
+        return;
+      }
       setMensagem(data.mensagem || JSON.stringify(data));
       // Se cadastro ou login for bem-sucedido, vai para tela do game
       if (
@@ -76,6 +101,7 @@ function App() {
   // Abas simuladas para o menu lateral
   const abas = [
     { id: "inicio", nome: "Início" },
+    { id: "perfil", nome: "Perfil" },
     { id: "desempenho", nome: "Desempenho" },
     { id: "questoes", nome: "Questões" },
     { id: "ranking", nome: "Ranking" },
@@ -203,28 +229,41 @@ function App() {
     let novaPontuacao = pontuacao;
     let novoAcertos = acertos;
     let novoErros = erros;
-    if (letra === questao.correta) {
-      novoAcertos += 1;
-      novaPontuacao += 3;
-      novoXp += 3;
-    } else {
-      novoErros += 1;
-      novaPontuacao = Math.max(0, novaPontuacao - 1);
-      novoXp = Math.max(0, novoXp - 1);
-    }
+    let ganhoXp = 30 * nivel;
+    let perdaXp = 10 * nivel;
     let novoNivel = nivel;
     let novoXpMax = xpMax;
-    if (novoXp >= xpMax) {
-      novoNivel += 1;
-      novoXp = novoXp - xpMax;
-      novoXpMax = Math.round(xpMax * 1.5);
+    let passouNivel = false;
+
+    if (letra === questao.correta) {
+      novoAcertos += 1;
+      novaPontuacao += 30;
+      novoXp += ganhoXp;
+    } else {
+      novoErros += 1;
+      novaPontuacao = Math.max(0, novaPontuacao - 10);
+      novoXp = Math.max(0, novoXp - perdaXp);
     }
+
+    while (novoXp >= novoXpMax) {
+      novoNivel += 1;
+      novoXp -= novoXpMax;
+      novoXpMax = Math.round(novoXpMax * 1.5);
+      passouNivel = true;
+    }
+
     setPontuacao(novaPontuacao);
     setAcertos(novoAcertos);
     setErros(novoErros);
     setNivel(novoNivel);
     setXpAtual(novoXp);
     setXpMax(novoXpMax);
+
+    if (passouNivel) {
+      setShowParabens(true);
+      setTimeout(() => setShowParabens(false), 2500);
+    }
+
     // Atualiza backend
     atualizarStatsBackend({
       pontuacao: novaPontuacao,
@@ -263,6 +302,14 @@ function App() {
     }
   }, [aba]);
 
+  // Carregar nome e cor do backend ao logar
+  useEffect(() => {
+    if (usuario) {
+      setNome(usuario.nome || "Jogador");
+      setAvatarColor(usuario.avatarColor || "#a3a3ff");
+    }
+  }, [usuario]);
+
   // Conteúdo das abas
   function renderAba() {
     if (aba === "inicio") {
@@ -287,18 +334,24 @@ function App() {
               maxWidth: 480,
             }}
           >
-            <img
-              src="https://www.clipartmax.com/png/middle/39-394785_books-livro-clipart.png"
-              alt="Avatar"
+            <div
               style={{
                 width: 56,
                 height: 56,
                 borderRadius: "50%",
                 border: `2px solid ${pastel.botao}`,
-                background: pastel.fundo,
+                background: avatarColor,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: "bold",
+                fontSize: 28,
+                color: "#fff",
                 objectFit: "cover",
               }}
-            />
+            >
+              {nome?.[0]?.toUpperCase() || "?"}
+            </div>
             <div style={{ flex: 1 }}>
               <div
                 style={{
@@ -307,7 +360,7 @@ function App() {
                   color: pastel.texto,
                 }}
               >
-                Jogador
+                {nome}
               </div>
               <div
                 style={{
@@ -456,24 +509,214 @@ function App() {
       );
     }
     if (aba === "desempenho") {
+      // Cálculos
+      const totalQuestoes = acertos + erros;
+      const acertosPerc =
+        totalQuestoes > 0 ? Math.round((acertos / totalQuestoes) * 100) : 0;
+      const errosPerc = 100 - acertosPerc;
+      const nota = totalQuestoes
+        ? ((acertos / totalQuestoes) * 10).toFixed(2)
+        : "0.00";
+
+      // Gráfico de pizza SVG
+      const r = 60,
+        cx = 80,
+        cy = 80;
+      const acertosAngle = (acertosPerc / 100) * 360;
+      const errosAngle = 360 - acertosAngle;
+      const polarToCartesian = (cx, cy, r, angle) => {
+        const a = ((angle - 90) * Math.PI) / 180.0;
+        return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+      };
+      const describeArc = (cx, cy, r, startAngle, endAngle) => {
+        const start = polarToCartesian(cx, cy, r, endAngle);
+        const end = polarToCartesian(cx, cy, r, startAngle);
+        const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+        return [
+          "M",
+          start.x,
+          start.y,
+          "A",
+          r,
+          r,
+          0,
+          largeArcFlag,
+          0,
+          end.x,
+          end.y,
+        ].join(" ");
+      };
+
+      // Gráfico de barras SVG
+      const barMax = Math.max(acertos, erros, 1);
+      const barHeight = 80;
+      const acertosBar = (acertos / barMax) * 120;
+      const errosBar = (erros / barMax) * 120;
+
       return (
         <div style={{ padding: 24 }}>
           <h2 style={{ color: pastel.botao }}>Desempenho</h2>
-          <p>
-            Gráficos e estatísticas detalhadas do seu desempenho aparecerão
-            aqui.
-          </p>
+          <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+            {/* Gráfico de pizza */}
+            <div
+              style={{
+                background: pastel.branco,
+                borderRadius: 12,
+                boxShadow: "0 2px 8px #0001",
+                padding: 24,
+              }}
+            >
+              <svg width={160} height={160}>
+                {/* Erros (vermelho) */}
+                <path
+                  d={describeArc(cx, cy, r, acertosAngle, 360)}
+                  fill="none"
+                  stroke={pastel.erro}
+                  strokeWidth={24}
+                />
+                {/* Acertos (verde) */}
+                <path
+                  d={describeArc(cx, cy, r, 0, acertosAngle)}
+                  fill="none"
+                  stroke={pastel.correto}
+                  strokeWidth={24}
+                />
+                {/* Círculo central branco */}
+                <circle cx={cx} cy={cy} r={r - 24} fill={pastel.branco} />
+                {/* Texto central */}
+                <text
+                  x={cx}
+                  y={cy + 6}
+                  textAnchor="middle"
+                  fontSize="28"
+                  fontWeight="bold"
+                  fill={pastel.texto}
+                >
+                  {nota}
+                </text>
+              </svg>
+              <div
+                style={{
+                  textAlign: "center",
+                  marginTop: 8,
+                  fontWeight: "bold",
+                }}
+              >
+                Nota <span style={{ color: pastel.botao }}>{nota}</span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: 16,
+                  marginTop: 8,
+                }}
+              >
+                <span
+                  style={{
+                    color: pastel.correto,
+                    fontWeight: "bold",
+                  }}
+                >
+                  Acertos
+                </span>
+                <span
+                  style={{
+                    color: pastel.erro,
+                    fontWeight: "bold",
+                  }}
+                >
+                  Erros
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: 16,
+                  fontSize: 14,
+                }}
+              >
+                <span style={{ color: pastel.correto }}>
+                  {acertos} ({acertosPerc}%)
+                </span>
+                <span style={{ color: pastel.erro }}>
+                  {erros} ({errosPerc}%)
+                </span>
+              </div>
+            </div>
+            {/* Gráfico de barras */}
+            <div
+              style={{
+                background: pastel.branco,
+                borderRadius: 12,
+                boxShadow: "0 2px 8px #0001",
+                padding: 24,
+              }}
+            >
+              <svg width={180} height={barHeight + 40}>
+                {/* Acertos */}
+                <rect
+                  x={30}
+                  y={barHeight - acertosBar + 20}
+                  width={40}
+                  height={acertosBar}
+                  fill={pastel.correto}
+                  rx={8}
+                />
+                <text
+                  x={50}
+                  y={barHeight + 36}
+                  textAnchor="middle"
+                  fontSize="14"
+                  fill={pastel.texto}
+                >
+                  Acertos
+                </text>
+                {/* Erros */}
+                <rect
+                  x={110}
+                  y={barHeight - errosBar + 20}
+                  width={40}
+                  height={errosBar}
+                  fill={pastel.erro}
+                  rx={8}
+                />
+                <text
+                  x={130}
+                  y={barHeight + 36}
+                  textAnchor="middle"
+                  fontSize="14"
+                  fill={pastel.texto}
+                >
+                  Erros
+                </text>
+              </svg>
+              <div
+                style={{
+                  textAlign: "center",
+                  marginTop: 8,
+                  fontSize: 14,
+                }}
+              >
+                Total de questões: <b>{totalQuestoes}</b>
+              </div>
+            </div>
+          </div>
           <div
             style={{
-              marginTop: 24,
+              marginTop: 32,
               background: pastel.destaque,
               borderRadius: 12,
               padding: 24,
               textAlign: "center",
             }}
           >
-            <span style={{ fontSize: 28, fontWeight: "bold" }}>100</span>
-            <div>Pontuação Média</div>
+            <span style={{ fontSize: 18, fontWeight: "bold" }}>Resumo</span>
+            <div style={{ marginTop: 10 }}>
+              <b>Acertos:</b> {acertos} &nbsp;|&nbsp; <b>Erros:</b> {erros}{" "}
+              &nbsp;|&nbsp; <b>Aproveitamento:</b> {acertosPerc}%
+            </div>
           </div>
         </div>
       );
@@ -740,7 +983,10 @@ function App() {
                   }}
                 >
                   <td style={{ padding: 10 }}>{i + 1}</td>
-                  <td style={{ padding: 10 }}>{u.email}</td>
+                  <td style={{ padding: 10 }}>
+                    {u.email}
+                    {u.nome ? ` (${u.nome})` : ""}
+                  </td>
                   <td style={{ padding: 10 }}>{u.pontuacao}</td>
                   <td style={{ padding: 10 }}>{u.nivel}</td>
                 </tr>
@@ -765,6 +1011,81 @@ function App() {
       setSenha("");
       setMensagem("");
       return null;
+    }
+    if (aba === "perfil") {
+      return (
+        <div style={{ padding: 24, maxWidth: 400 }}>
+          <h2 style={{ color: pastel.botao }}>Perfil</h2>
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ marginBottom: 12 }}>
+              <label>
+                <b>Nome:</b>
+                <input
+                  type="text"
+                  value={nome}
+                  maxLength={20}
+                  onChange={(e) => setNome(e.target.value)}
+                  onBlur={() => atualizarPerfilBackend(nome, avatarColor)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      atualizarPerfilBackend(nome, avatarColor);
+                      e.target.blur();
+                    }
+                  }}
+                  style={{
+                    marginLeft: 10,
+                    padding: 6,
+                    borderRadius: 6,
+                    border: "1px solid #ccc",
+                    background: pastel.fundo,
+                  }}
+                />
+              </label>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label>
+                <b>Cor do Avatar:</b>
+                <input
+                  type="color"
+                  value={avatarColor}
+                  onChange={(e) => {
+                    setAvatarColor(e.target.value);
+                    atualizarPerfilBackend(nome, e.target.value);
+                  }}
+                  style={{
+                    marginLeft: 10,
+                    width: 36,
+                    height: 36,
+                    border: "none",
+                    background: "none",
+                  }}
+                />
+              </label>
+            </div>
+            <div style={{ marginTop: 18 }}>
+              <div
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: "50%",
+                  background: avatarColor,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: "bold",
+                  fontSize: 28,
+                  color: "#fff",
+                  border: `2px solid ${pastel.botao}`,
+                  margin: "0 auto",
+                }}
+              >
+                {nome?.[0]?.toUpperCase() || "?"}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
     }
     return null;
   }
@@ -850,6 +1171,39 @@ function App() {
             {renderAba()}
           </main>
         </div>
+        {showParabens && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100vw",
+              height: "100vh",
+              background: "rgba(0,0,0,0.25)",
+              zIndex: 2000,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              style={{
+                background: pastel.correto,
+                color: pastel.texto,
+                borderRadius: 16,
+                padding: "40px 60px",
+                fontSize: 28,
+                fontWeight: "bold",
+                boxShadow: "0 4px 24px rgba(0,0,0,0.18)",
+                textAlign: "center",
+                border: `3px solid ${pastel.botao}`,
+                animation: "pop 0.4s",
+              }}
+            >
+              🎉 Parabéns, {nome}! Você subiu para o nível {nivel}! 🎉
+            </div>
+          </div>
+        )}
       </>
     );
   }
