@@ -53,15 +53,24 @@ app.post("/register", async (req, res) => {
 
     const existing = await User.findOne({ email });
     if (existing) {
-      return res.status(200).json({
+      return res.status(400).json({
         mensagem: "Usuário já cadastrado",
-        sucesso: true,
-        usuario: existing,
+        sucesso: false,
       });
     }
 
     const hash = await bcrypt.hash(senha, 10);
-    const user = new User({ email, senha: hash });
+    // Adicione campos iniciais para ranking
+    const user = new User({
+      email,
+      senha: hash,
+      pontuacao: 0,
+      acertos: 0,
+      erros: 0,
+      nivel: 1,
+      xpAtual: 0,
+      xpMax: 100,
+    });
     await user.save();
 
     res.json({ mensagem: "Cadastro realizado!", sucesso: true, usuario: user });
@@ -76,18 +85,9 @@ app.post("/login", async (req, res) => {
   try {
     const { email, senha } = req.body;
     if (!email || !senha) {
-      return res.status(200).json({
-        mensagem: "Entrando como convidado",
-        sucesso: true,
-        usuario: {
-          email: "convidado@local",
-          pontuacao: 0,
-          acertos: 0,
-          erros: 0,
-          nivel: 1,
-          xpAtual: 0,
-          xpMax: 100,
-        },
+      return res.status(400).json({
+        mensagem: "Email e senha obrigatórios",
+        sucesso: false,
       });
     }
 
@@ -130,11 +130,30 @@ app.post("/update-stats", async (req, res) => {
   }
 });
 
+// Atualizar perfil (nome e cor do avatar)
+app.post("/update-profile", async (req, res) => {
+  try {
+    const { email, nome, avatarColor } = req.body;
+    const usuario = await User.findOneAndUpdate(
+      { email },
+      { nome, avatarColor },
+      { new: true }
+    );
+    if (!usuario)
+      return res.status(404).json({ mensagem: "Usuário não encontrado" });
+    res.json({ mensagem: "Perfil atualizado", usuario });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ mensagem: "Erro ao atualizar perfil" });
+  }
+});
+
 // Ranking
 app.get("/ranking", async (req, res) => {
   try {
+    // Inclui nome no ranking
     const ranking = await User.find({})
-      .select("email pontuacao nivel -_id")
+      .select("email nome pontuacao nivel -_id")
       .sort({ pontuacao: -1 })
       .limit(10)
       .lean();
@@ -172,6 +191,14 @@ app.get("/questions", async (req, res) => {
     res.status(500).json({ mensagem: "Erro ao buscar questões" });
   }
 });
+
+// Captura erros não tratados
+process.on("uncaughtException", (err) =>
+  console.error("Uncaught Exception:", err)
+);
+process.on("unhandledRejection", (err) =>
+  console.error("Unhandled Rejection:", err)
+);
 
 // Captura erros não tratados
 process.on("uncaughtException", (err) =>
