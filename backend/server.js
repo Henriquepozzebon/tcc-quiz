@@ -1,7 +1,14 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config(); // Carrega variáveis do .env
-const bcrypt = require("bcrypt");
+const bcryptjs = require("bcryptjs");
+// try carregar bcrypt nativo como fallback (pode não estar disponível em todas as máquinas)
+let bcryptNative = null;
+try {
+  bcryptNative = require("bcrypt");
+} catch (e) {
+  // bcrypt nativo não disponível — tudo bem, vamos usar bcryptjs
+}
 
 // Mongoose e modelos
 const { connectDB } = require("./utils/connectDB");
@@ -41,11 +48,14 @@ function emailValido(email) {
 // Cadastro de usuário
 app.post("/register", async (req, res) => {
   try {
-    const { email, senha } = req.body;
+    let { email, senha } = req.body;
     if (!email || !senha)
       return res
         .status(400)
         .json({ mensagem: "Email e senha obrigatórios", sucesso: false });
+
+    email = String(email).trim().toLowerCase();
+
     if (!emailValido(email))
       return res
         .status(400)
@@ -59,11 +69,10 @@ app.post("/register", async (req, res) => {
       });
     }
 
-    const hash = await bcrypt.hash(senha, 10);
-    // Adicione campos iniciais para ranking
+    // Criar usuário (o pre('save') do modelo fará o hash da senha)
     const user = new User({
       email,
-      senha: hash,
+      senha,
       pontuacao: 0,
       acertos: 0,
       erros: 0,
@@ -73,7 +82,10 @@ app.post("/register", async (req, res) => {
     });
     await user.save();
 
-    res.json({ mensagem: "Cadastro realizado!", sucesso: true, usuario: user });
+    // Sanitizar antes de retornar
+    const out = user.toObject();
+    delete out.senha;
+    res.json({ mensagem: "Cadastro realizado!", sucesso: true, usuario: out });
   } catch (err) {
     console.error(err);
     res.status(500).json({ mensagem: "Erro no servidor", sucesso: false });
@@ -83,13 +95,15 @@ app.post("/register", async (req, res) => {
 // Login
 app.post("/login", async (req, res) => {
   try {
-    const { email, senha } = req.body;
+    let { email, senha } = req.body;
     if (!email || !senha) {
       return res.status(400).json({
         mensagem: "Email e senha obrigatórios",
         sucesso: false,
       });
     }
+
+    email = String(email).trim().toLowerCase();
 
     const usuario = await User.findOne({ email });
     if (!usuario) {
@@ -98,13 +112,50 @@ app.post("/login", async (req, res) => {
         .json({ mensagem: "Usuário não encontrado", sucesso: false });
     }
 
-    const senhaOk = await bcrypt.compare(senha, usuario.senha);
-    if (!senhaOk)
+    // Diagnóstico seguro: tamanho do candidato (não logar a senha)
+    console.debug(`Login attempt: email=${email} candidateLen=${String(senha).length}`);
+
+    // Detecta se a senha armazenada parece um hash bcrypt
+    const isHashed = typeof usuario.senha === "string" && usuario.senha.startsWith("$2");
+    let senhaOk = false;
+
+    if (isHashed) {
+      // Primeiro, tente a comparação padrão (bcryptjs via método do modelo)
+      senhaOk = await usuario.compareSenha(senha);
+      console.debug(`Login: usuário=${email} stored=hash compare(bcryptjs)=${senhaOk}`);
+
+      // Se falhar e bcrypt nativo estiver disponível, tente comparar com ele (fallback)
+      if (!senhaOk && bcryptNative) {
+        try {
+          senhaOk = await bcryptNative.compare(senha, usuario.senha);
+          console.debug(`Login: usuário=${email} stored=hash compare(bcrypt native)=${senhaOk}`);
+        } catch (err) {
+          console.debug("Erro ao comparar com bcrypt nativo:", err && err.message);
+        }
+      }
+    } else {
+      // senha em texto plano no banco (dados antigos): comparar diretamente e migre para hash
+      console.debug(`Login: usuário=${email} stored=plain`);
+      if (senha === usuario.senha) {
+        usuario.senha = senha; // pre-save fará o hash
+        await usuario.save();
+        senhaOk = true;
+        console.debug(`Login: usuário=${email} migrado para hash`);
+      } else {
+        senhaOk = false;
+      }
+    }
+
+    if (!senhaOk) {
       return res
         .status(401)
         .json({ mensagem: "Senha incorreta", sucesso: false });
+    }
 
-    res.json({ mensagem: "Login bem-sucedido", sucesso: true, usuario });
+    // Sanitizar antes de retornar
+    const out = usuario.toObject();
+    delete out.senha;
+    res.json({ mensagem: "Login bem-sucedido", sucesso: true, usuario: out });
   } catch (err) {
     console.error(err);
     res.status(500).json({ mensagem: "Erro no servidor", sucesso: false });
@@ -114,16 +165,25 @@ app.post("/login", async (req, res) => {
 // Atualizar estatísticas
 app.post("/update-stats", async (req, res) => {
   try {
-    const { email, pontuacao, acertos, erros, nivel, xpAtual, xpMax } =
-      req.body;
+    const { email } = req.body;
+    const normalizedEmail = String(email || "").trim().toLowerCase();
     const usuario = await User.findOneAndUpdate(
-      { email },
-      { pontuacao, acertos, erros, nivel, xpAtual, xpMax },
+      { email: normalizedEmail },
+      {
+        pontuacao: req.body.pontuacao,
+        acertos: req.body.acertos,
+        erros: req.body.erros,
+        nivel: req.body.nivel,
+        xpAtual: req.body.xpAtual,
+        xpMax: req.body.xpMax,
+      },
       { new: true }
     );
     if (!usuario)
       return res.status(404).json({ mensagem: "Usuário não encontrado" });
-    res.json({ mensagem: "Estatísticas atualizadas", usuario });
+    const out = usuario.toObject();
+    delete out.senha;
+    res.json({ mensagem: "Estatísticas atualizadas", usuario: out });
   } catch (err) {
     console.error(err);
     res.status(500).json({ mensagem: "Erro no servidor" });
@@ -134,14 +194,17 @@ app.post("/update-stats", async (req, res) => {
 app.post("/update-profile", async (req, res) => {
   try {
     const { email, nome, avatarColor } = req.body;
+    const normalizedEmail = String(email || "").trim().toLowerCase();
     const usuario = await User.findOneAndUpdate(
-      { email },
+      { email: normalizedEmail },
       { nome, avatarColor },
       { new: true }
     );
     if (!usuario)
       return res.status(404).json({ mensagem: "Usuário não encontrado" });
-    res.json({ mensagem: "Perfil atualizado", usuario });
+    const out = usuario.toObject();
+    delete out.senha;
+    res.json({ mensagem: "Perfil atualizado", usuario: out });
   } catch (err) {
     console.error(err);
     res.status(500).json({ mensagem: "Erro ao atualizar perfil" });
@@ -151,7 +214,6 @@ app.post("/update-profile", async (req, res) => {
 // Ranking
 app.get("/ranking", async (req, res) => {
   try {
-    // Inclui nome no ranking
     const ranking = await User.find({})
       .select("email nome pontuacao nivel -_id")
       .sort({ pontuacao: -1 })
@@ -192,18 +254,100 @@ app.get("/questions", async (req, res) => {
   }
 });
 
-// Captura erros não tratados
-process.on("uncaughtException", (err) =>
-  console.error("Uncaught Exception:", err)
-);
-process.on("unhandledRejection", (err) =>
-  console.error("Unhandled Rejection:", err)
-);
+// Migrar senhas para o formato hash (temporário)
+// ATENÇÃO: USE APENAS SE AS SENHAS ESTIVEREM EM TEXTO PLANO NO BANCO
+app.post("/migrate-passwords", async (req, res) => {
+  try {
+    const usuarios = await User.find({});
+    for (const usuario of usuarios) {
+      if (!(typeof usuario.senha === "string" && usuario.senha.startsWith("$2"))) {
+        const hash = await bcryptjs.hash(usuario.senha, 10);
+        usuario.senha = hash;
+        await usuario.save();
+      }
+    }
+    res.json({ mensagem: "Senhas migradas com sucesso" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ mensagem: "Erro ao migrar senhas" });
+  }
+});
 
-// Captura erros não tratados
-process.on("uncaughtException", (err) =>
-  console.error("Uncaught Exception:", err)
-);
-process.on("unhandledRejection", (err) =>
-  console.error("Unhandled Rejection:", err)
-);
+// ROTA TEMPORÁRIA: Resetar senha (DESENVOLVIMENTO apenas)
+// POST /reset-password { email, newSenha }
+// Força atualização do campo senha (pre-save fará o hash).
+app.post("/reset-password", async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ mensagem: "Endpoint desabilitado em produção" });
+    }
+    let { email, newSenha } = req.body;
+    if (!email || !newSenha) {
+      return res.status(400).json({ mensagem: "email e newSenha obrigatórios" });
+    }
+    email = String(email).trim().toLowerCase();
+    const usuario = await User.findOne({ email });
+    if (!usuario) return res.status(404).json({ mensagem: "Usuário não encontrado" });
+
+    console.debug(`Reset password (dev): usuario=${email} newSenhaLen=${String(newSenha).length}`);
+    usuario.senha = newSenha; // pre-save fará o hash
+    await usuario.save();
+
+    const out = usuario.toObject();
+    delete out.senha;
+    res.json({ mensagem: "Senha resetada com sucesso", usuario: out });
+  } catch (err) {
+    console.error("Erro /reset-password:", err);
+    res.status(500).json({ mensagem: "Erro ao resetar senha" });
+  }
+});
+
+// Rota de debug para diagnosticar problemas de login (APENAS em development)
+// Corpo: { email: "...", senha: "opcional_para_testar_compare" }
+// Retorna: { exists, isHashed, hashLength, compareResult (se senha enviada) }
+app.post("/debug-user", async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ mensagem: "Rota de debug desabilitada em produção" });
+    }
+
+    let { email, senha } = req.body;
+    if (!email) return res.status(400).json({ mensagem: "email obrigatório" });
+    email = String(email).trim().toLowerCase();
+
+    const usuario = await User.findOne({ email }).lean();
+    if (!usuario) {
+      console.debug(`DEBUG: usuário não encontrado: ${email}`);
+      return res.json({ exists: false });
+    }
+
+    const senhaField = usuario.senha || "";
+    const isHashed = typeof senhaField === "string" && senhaField.startsWith("$2");
+    const hashLength = typeof senhaField === "string" ? senhaField.length : 0;
+
+    let compareResult = null;
+    if (senha) {
+      // buscar documento completo para usar método compareSenha
+      const fullUser = await User.findOne({ email });
+      if (fullUser) {
+        compareResult = await fullUser.compareSenha(senha);
+      } else {
+        compareResult = false;
+      }
+    }
+
+    console.debug(`DEBUG: usuário=${email} exists=true isHashed=${isHashed} hashLen=${hashLength} compare=${compareResult}`);
+    return res.json({
+      exists: true,
+      isHashed,
+      hashLength,
+      compareResult,
+    });
+  } catch (err) {
+    console.error("Erro /debug-user:", err);
+    return res.status(500).json({ mensagem: "Erro interno no servidor" });
+  }
+});
+
+process.on("unhandledRejection", (err) => console.error("Unhandled Rejection:", err));
+process.on("uncaughtException", (err) => console.error("Uncaught Exception:", err));

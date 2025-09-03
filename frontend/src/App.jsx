@@ -13,6 +13,7 @@ function App() {
   const [showParabens, setShowParabens] = useState(false);
   const [nome, setNome] = useState("Jogador");
   const [avatarColor, setAvatarColor] = useState("#a3a3ff");
+  const [isLoading, setIsLoading] = useState(false); // Novo estado para controle de loading
 
   const pastel = {
     fundo: "rgb(245, 245, 245)",
@@ -45,56 +46,60 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMensagem("");
+    setIsLoading(true);
+
     const endpoint = isLogin ? "/login" : "/register";
     try {
       const res = await fetch(`http://localhost:3000${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, senha }),
+        body: JSON.stringify({ email: email?.trim(), senha }),
       });
-      const data = await res.json();
 
-      // Mensagens de erro para login
-      if (
-        isLogin &&
-        data.mensagem &&
-        (data.mensagem.toLowerCase().includes("não encontrado") ||
-          data.mensagem.toLowerCase().includes("senha incorreta"))
-      ) {
-        setMensagem(data.mensagem);
+      // debug: log do status
+      console.log("Resposta fetch", res.status, res.statusText);
+
+      let data;
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        console.error("Erro ao parsear JSON:", jsonErr);
+        setMensagem(`Erro: resposta inválida do servidor (status ${res.status})`);
+        setIsLoading(false);
         return;
       }
 
-      // Mensagem para cadastro já existente
-      if (
-        !isLogin &&
-        data.mensagem &&
-        data.mensagem.toLowerCase().includes("já cadastrado")
-      ) {
-        setMensagem("E-mail já cadastrado. Faça login.");
-        setIsLogin(true);
+      if (!res.ok) {
+        // mostra mensagem do backend se houver
+        const msg = data?.mensagem || `Erro ${res.status}: ${res.statusText}`;
+        setMensagem(msg);
+        console.warn("Login/register falhou:", msg);
+        setIsLoading(false);
         return;
       }
-      setMensagem(data.mensagem || JSON.stringify(data));
-      // Se cadastro ou login for bem-sucedido, vai para tela do game
-      if (
-        (!isLogin &&
-          data.mensagem &&
-          data.mensagem.toLowerCase().includes("cadastro realizado")) ||
-        (isLogin && data.sucesso)
-      ) {
-        // Salva dados do usuário
+
+      // sucesso
+      setMensagem(data.mensagem || "Operação realizada com sucesso");
+      console.log("Resposta do backend:", data);
+      if (isLogin && data.sucesso) {
         setUsuario(data.usuario);
-        setPontuacao(data.usuario.pontuacao || 0);
-        setAcertos(data.usuario.acertos || 0);
-        setErros(data.usuario.erros || 0);
-        setNivel(data.usuario.nivel || 1);
-        setXpAtual(data.usuario.xpAtual || 0);
-        setXpMax(data.usuario.xpMax || 100);
-        setTimeout(() => setTela("game"), 800); // pequena pausa para mostrar mensagem
+        // inicializar estados do game se fornecer
+        setPontuacao?.(data.usuario?.pontuacao || 0);
+        setAcertos?.(data.usuario?.acertos || 0);
+        setErros?.(data.usuario?.erros || 0);
+        setNivel?.(data.usuario?.nivel || 1);
+        setXpAtual?.(data.usuario?.xpAtual || 0);
+        setXpMax?.(data.usuario?.xpMax || 100);
+        setTimeout(() => setTela("game"), 600);
+      } else if (!isLogin && data.sucesso) {
+        // após cadastro bem-sucedido, ir para login ou game conforme sua lógica
+        setTimeout(() => setIsLogin(true), 600);
       }
     } catch (err) {
-      setMensagem("Erro ao conectar com o backend");
+      console.error("Erro na requisição:", err);
+      setMensagem("Erro ao conectar com o backend. Verifique se o servidor está rodando.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -1090,6 +1095,75 @@ function App() {
     return null;
   }
 
+  // Reset de senha (dev): pede nova senha via prompt e chama /reset-password
+  const handleResetPassword = async () => {
+    if (!email) {
+      setMensagem("Preencha o e-mail para resetar a senha.");
+      return;
+    }
+    const nova = window.prompt("Digite a nova senha (apenas ambiente de desenvolvimento):", "senhaTeste123");
+    if (!nova) {
+      setMensagem("Reset cancelado.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await fetch("http://localhost:3000/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email?.trim(), newSenha: nova }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMensagem(data?.mensagem || `Erro reset ${res.status}`);
+      } else {
+        setMensagem("Senha resetada com sucesso. Tente logar com a nova senha.");
+        console.log("reset-password:", data);
+      }
+    } catch (err) {
+      console.error("Erro handleResetPassword:", err);
+      setMensagem("Erro ao conectar com o backend para reset.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDebug = async () => {
+    if (!email) {
+      setMensagem("Preencha o e-mail para debug.");
+      return;
+    }
+    setIsLoading(true);
+    setMensagem("");
+    try {
+      const res = await fetch("http://localhost:3000/debug-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email?.trim(), senha }), // senha opcional
+      });
+      const data = await res.json();
+      console.log("debug-user:", data);
+      if (!res.ok) {
+        setMensagem(data?.mensagem || `Erro debug ${res.status}`);
+      } else {
+        const parts = [
+          `exists: ${data.exists}`,
+          `isHashed: ${data.isHashed}`,
+          `hashLength: ${data.hashLength}`,
+        ];
+        if (typeof data.compareResult !== "undefined" && data.compareResult !== null) {
+          parts.push(`compare: ${data.compareResult}`);
+        }
+        setMensagem(parts.join(" | "));
+      }
+    } catch (err) {
+      console.error("Erro handleDebug:", err);
+      setMensagem("Erro ao conectar com o backend para debug.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (tela === "game") {
     return (
       <>
@@ -1331,23 +1405,60 @@ function App() {
                 }}
               />
               <br />
-              <button
-                type="submit"
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  background: pastel.botao,
-                  color: pastel.texto,
-                  border: "none",
-                  borderRadius: 6,
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                  marginBottom: 6,
-                  transition: "background 0.2s",
-                }}
-              >
-                {isLogin ? "Entrar" : "Cadastrar"}
-              </button>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 8 }}>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  style={{
+                    width: 200,
+                    padding: 10,
+                    background: pastel.botao,
+                    color: pastel.texto,
+                    border: "none",
+                    borderRadius: 6,
+                    fontWeight: "bold",
+                    cursor: isLoading ? "default" : "pointer",
+                    transition: "background 0.2s",
+                    opacity: isLoading ? 0.7 : 1,
+                  }}
+                >
+                  {isLoading ? (isLogin ? "Entrando..." : "Cadastrando...") : (isLogin ? "Entrar" : "Cadastrar")}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDebug}
+                  disabled={isLoading}
+                  style={{
+                    padding: 10,
+                    background: "#f0f0f0",
+                    color: pastel.texto,
+                    border: "1px solid #ddd",
+                    borderRadius: 6,
+                    cursor: isLoading ? "default" : "pointer",
+                  }}
+                  title="Chamar /debug-user para diagnosticar"
+                >
+                  Debug login
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetPassword}
+                  disabled={isLoading}
+                  style={{
+                    padding: 10,
+                    background: "#ffeedd",
+                    color: pastel.texto,
+                    border: "1px solid #e0c8b0",
+                    borderRadius: 6,
+                    cursor: isLoading ? "default" : "pointer",
+                  }}
+                  title="Resetar senha do usuário (desenvolvimento)"
+                >
+                  Resetar senha (dev)
+                </button>
+              </div>
             </form>
             <button
               onClick={() => setIsLogin(!isLogin)}
