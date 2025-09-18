@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Timer from "./components/Timer";
 
 function App() {
   const [isLogin, setIsLogin] = useState(true);
@@ -208,6 +209,23 @@ function App() {
   const [nivel, setNivel] = useState(1);
   const [xpAtual, setXpAtual] = useState(0);
   const [xpMax, setXpMax] = useState(100);
+
+  // Timer: reinicia a cada nova questão
+  const [timerKey, setTimerKey] = useState(0);
+
+  useEffect(() => {
+    if (aba === "questoes") setTimerKey((k) => k + 1);
+  }, [indiceQuestao, aba]);
+
+  // Função chamada quando o tempo acaba
+  function handleTimeUp() {
+    if (!resposta) {
+      setErros((e) => e + 1);
+      setResposta("__TIMEOUT__");
+      // Removido o setTimeout(proximaQuestao, 800);
+      // Agora só avança ao clicar em "Próxima Questão"
+    }
+  }
 
   // Resetar seleção ao trocar para aba "questoes"
   useEffect(() => {
@@ -484,7 +502,7 @@ function App() {
                   color: pastel.texto,
                 }}
               >
-                {probAcerto}%
+                {probAcerto}%{" "}
               </div>
               <div style={{ marginTop: 8 }}>Acertos</div>
             </div>
@@ -505,7 +523,7 @@ function App() {
                   color: pastel.texto,
                 }}
               >
-                {probErro}%
+                {probErro}%{" "}
               </div>
               <div style={{ marginTop: 8 }}>Erros</div>
             </div>
@@ -753,10 +771,19 @@ function App() {
               fontSize: 16,
               color: pastel.texto,
               marginBottom: 10,
+              display: "flex",
+              justifyContent: "space-between",
+              width: "100%",
+              alignItems: "center",
             }}
           >
-            <b>{questaoExemplo.materia}</b> | {questaoExemplo.ano} |{" "}
-            {questaoExemplo.banca} | {questaoExemplo.prova}
+            <div>
+              <b>{questaoExemplo.materia}</b> | {questaoExemplo.ano} | {questaoExemplo.banca} | {questaoExemplo.prova}
+            </div>
+            {/* Timer só aparece se ainda não respondeu */}
+            {!resposta && (
+              <Timer key={timerKey} duration={180} onTimeUp={handleTimeUp} />
+            )}
           </div>
           <div
             style={{
@@ -827,6 +854,7 @@ function App() {
                   style={{
                     display: "flex",
                     alignItems: "center",
+                    justifyContent: "flex-start",
                     marginBottom: 18,
                     background: bg,
                     borderRadius: 10,
@@ -838,8 +866,11 @@ function App() {
                     transition: "background 0.2s, border 0.2s",
                     color,
                     width: "100%",
+                    minWidth: "320px",
                     maxWidth: "100%",
                     minHeight: 48,
+                    boxSizing: "border-box",
+                    wordBreak: "break-word", // garante quebra de linha
                   }}
                   onClick={() => {
                     if (!resposta) responderQuestao(alt.letra);
@@ -860,11 +891,20 @@ function App() {
                       fontSize: 20,
                       border: "2px solid #fff",
                       boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                      flexShrink: 0,
                     }}
                   >
                     {alt.letra}
                   </span>
-                  <span>{alt.texto}</span>
+                  <span
+                    style={{
+                      flex: 1,
+                      wordBreak: "break-word",
+                      whiteSpace: "pre-line",
+                    }}
+                  >
+                    {alt.texto}
+                  </span>
                 </div>
               );
             })}
@@ -1496,4 +1536,5 @@ function App() {
   );
 }
 
+export default App;
 export default App;
