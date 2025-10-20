@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import Timer from "./components/Timer";
 
+// Troque pelo endereço real do seu backend no Render:
+const API_URL = "https://tcc-quiz.onrender.com"; // coloque o endereço correto aqui
+
 function App() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -27,7 +30,7 @@ function App() {
   };
 
   useEffect(() => {
-    fetch("http://localhost:3000/")
+    fetch(`${API_URL}/`)
       .then((res) => res.text())
       .then(() => setStatusApi("API conectada!"))
       .catch(() => setStatusApi("Erro ao conectar com a API"));
@@ -51,7 +54,7 @@ function App() {
 
     const endpoint = isLogin ? "/login" : "/register";
     try {
-      const res = await fetch(`http://localhost:3000${endpoint}`, {
+      const res = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email?.trim(), senha }),
@@ -301,7 +304,7 @@ function App() {
   // Atualiza backend ao responder questão
   async function atualizarStatsBackend(novo) {
     if (!usuario) return;
-    await fetch("http://localhost:3000/update-stats", {
+    await fetch(`${API_URL}/update-stats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -319,7 +322,7 @@ function App() {
   // Ranking: busca do backend ao abrir aba ranking
   useEffect(() => {
     if (aba === "ranking") {
-      fetch("http://localhost:3000/ranking")
+      fetch(`${API_URL}/ranking`)
         .then((res) => res.json())
         .then((data) => setRanking(data.ranking || []));
     }
@@ -332,6 +335,33 @@ function App() {
       setAvatarColor(usuario.avatarColor || "#a3a3ff");
     }
   }, [usuario]);
+
+  // Filtros visuais (checkboxes)
+  const [filtros, setFiltros] = useState({
+    ano: false,
+    materia: false,
+  });
+  // Lista de opções únicas para cada filtro
+  const anos = [...new Set(questoesExemplo.map((q) => q.ano))];
+  const materias = [...new Set(questoesExemplo.map((q) => q.materia))];
+
+  // Estado para seleção dos valores dos filtros
+  const [filtroAno, setFiltroAno] = useState("");
+  const [filtroMateria, setFiltroMateria] = useState("");
+
+  // Filtra as questões de exemplo conforme filtros ativos
+  const questoesFiltradas = questoesExemplo.filter((q) => {
+    if (filtros.ano && filtroAno && q.ano !== filtroAno) return false;
+    if (filtros.materia && filtroMateria && q.materia !== filtroMateria) return false;
+    return true;
+  });
+
+  // Atualiza índice da questão se filtro mudar (mantém dentro do array filtrado)
+  useEffect(() => {
+    if (indiceQuestao >= questoesFiltradas.length) {
+      setIndiceQuestao(0);
+    }
+  }, [questoesFiltradas.length]);
 
   // Conteúdo das abas
   function renderAba() {
@@ -745,7 +775,8 @@ function App() {
       );
     }
     if (aba === "questoes") {
-      const questaoExemplo = questoesExemplo[indiceQuestao];
+      // Troque questaoExemplo por questoesFiltradas[indiceQuestao]
+      const questaoExemplo = questoesFiltradas[indiceQuestao];
       const corAcerto = pastel.correto;
       const corErro = pastel.erro;
       const corPadrao = pastel.fundo;
@@ -764,8 +795,82 @@ function App() {
             display: "flex",
             flexDirection: "column",
             alignItems: "flex-start",
+            boxSizing: "border-box",
+            overflow: "hidden", // garante que nada ultrapasse
           }}
         >
+          {/* Painel de filtros */}
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "100%",
+              marginBottom: 24,
+              background: pastel.destaque,
+              borderRadius: 10,
+              padding: "18px 24px",
+              boxSizing: "border-box",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 24,
+              alignItems: "center",
+              overflow: "auto", // se passar, aparece scroll horizontal
+            }}
+          >
+            <span style={{ fontWeight: "bold", fontSize: 18, marginRight: 12 }}>
+              Filtros:
+            </span>
+            {/* Checkbox para Ano */}
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={filtros.ano}
+                onChange={(e) =>
+                  setFiltros((f) => ({ ...f, ano: e.target.checked }))
+                }
+              />
+              Ano
+              {filtros.ano && (
+                <select
+                  value={filtroAno}
+                  onChange={(e) => setFiltroAno(Number(e.target.value))}
+                  style={{ marginLeft: 8, padding: 4, borderRadius: 6 }}
+                >
+                  <option value="">Todos</option>
+                  {anos.map((ano) => (
+                    <option key={ano} value={ano}>
+                      {ano}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </label>
+            {/* Checkbox para Matéria */}
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={filtros.materia}
+                onChange={(e) =>
+                  setFiltros((f) => ({ ...f, materia: e.target.checked }))
+                }
+              />
+              Matéria
+              {filtros.materia && (
+                <select
+                  value={filtroMateria}
+                  onChange={(e) => setFiltroMateria(e.target.value)}
+                  style={{ marginLeft: 8, padding: 4, borderRadius: 6 }}
+                >
+                  <option value="">Todas</option>
+                  {materias.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </label>
+          </div>
           <div
             style={{
               fontSize: 16,
@@ -778,7 +883,10 @@ function App() {
             }}
           >
             <div>
-              <b>{questaoExemplo.materia}</b> | {questaoExemplo.ano} | {questaoExemplo.banca} | {questaoExemplo.prova}
+              <b>{questoesFiltradas[indiceQuestao]?.materia}</b> |{" "}
+              {questoesFiltradas[indiceQuestao]?.ano} |{" "}
+              {questoesFiltradas[indiceQuestao]?.banca} |{" "}
+              {questoesFiltradas[indiceQuestao]?.prova}
             </div>
             {/* Timer só aparece se ainda não respondeu */}
             {!resposta && (
@@ -797,11 +905,13 @@ function App() {
               width: "100%",
             }}
           >
-            <span>{questaoExemplo.enunciado}</span>
+            <span>{questoesFiltradas[indiceQuestao]?.enunciado}</span>
             {resposta && (
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(questaoExemplo.enunciado);
+                  navigator.clipboard.writeText(
+                    questoesFiltradas[indiceQuestao]?.enunciado
+                  );
                 }}
                 style={{
                   marginLeft: 18,
@@ -823,7 +933,7 @@ function App() {
             )}
           </div>
           <div style={{ width: "100%" }}>
-            {questaoExemplo.alternativas.map((alt) => {
+            {questoesFiltradas[indiceQuestao]?.alternativas.map((alt) => {
               let bg = corPadrao;
               let border = "1.5px solid #ddd";
               let color = pastel.texto;
@@ -1141,14 +1251,17 @@ function App() {
       setMensagem("Preencha o e-mail para resetar a senha.");
       return;
     }
-    const nova = window.prompt("Digite a nova senha (apenas ambiente de desenvolvimento):", "senhaTeste123");
+    const nova = window.prompt(
+      "Digite a nova senha (apenas ambiente de desenvolvimento):",
+      "senhaTeste123"
+    );
     if (!nova) {
       setMensagem("Reset cancelado.");
       return;
     }
     setIsLoading(true);
     try {
-      const res = await fetch("http://localhost:3000/reset-password", {
+      const res = await fetch(`${API_URL}/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email?.trim(), newSenha: nova }),
@@ -1176,7 +1289,7 @@ function App() {
     setIsLoading(true);
     setMensagem("");
     try {
-      const res = await fetch("http://localhost:3000/debug-user", {
+      const res = await fetch(`${API_URL}/debug-user`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email?.trim(), senha }), // senha opcional
@@ -1191,7 +1304,10 @@ function App() {
           `isHashed: ${data.isHashed}`,
           `hashLength: ${data.hashLength}`,
         ];
-        if (typeof data.compareResult !== "undefined" && data.compareResult !== null) {
+        if (
+          typeof data.compareResult !== "undefined" &&
+          data.compareResult !== null
+        ) {
           parts.push(`compare: ${data.compareResult}`);
         }
         setMensagem(parts.join(" | "));
@@ -1445,7 +1561,14 @@ function App() {
                 }}
               />
               <br />
-              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 8 }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  justifyContent: "center",
+                  marginTop: 8,
+                }}
+              >
                 <button
                   type="submit"
                   disabled={isLoading}
@@ -1462,7 +1585,13 @@ function App() {
                     opacity: isLoading ? 0.7 : 1,
                   }}
                 >
-                  {isLoading ? (isLogin ? "Entrando..." : "Cadastrando...") : (isLogin ? "Entrar" : "Cadastrar")}
+                  {isLoading
+                    ? isLogin
+                      ? "Entrando..."
+                      : "Cadastrando..."
+                    : isLogin
+                    ? "Entrar"
+                    : "Cadastrar"}
                 </button>
 
                 <button
@@ -1537,4 +1666,5 @@ function App() {
 }
 
 export default App;
-export default App;
+
+
