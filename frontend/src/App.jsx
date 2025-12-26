@@ -113,6 +113,7 @@ function App() {
     { id: "perfil", nome: "Perfil" },
     { id: "desempenho", nome: "Desempenho" },
     { id: "questoes", nome: "Questões" },
+    { id: "simulados", nome: "Simulados" }, // NOVO
     { id: "ranking", nome: "Ranking" },
     { id: "config", nome: "Configurações" },
     { id: "sair", nome: "Sair" },
@@ -132,7 +133,7 @@ function App() {
       ],
       correta: "B",
       materia: "Matemática",
-      ano: 2025,
+      ano: 2026,
       banca: "Exemplo",
       prova: "Simulado ENEM",
     },
@@ -163,8 +164,8 @@ function App() {
         { letra: "E", texto: "6" },
       ],
       correta: "C",
-      materia: "Matemática",
-      ano: 2025,
+      materia: "Linguagens", // <-- Troque para Linguagens
+      ano: 2024,
       banca: "Exemplo",
       prova: "Simulado ENEM",
     },
@@ -180,7 +181,7 @@ function App() {
       ],
       correta: "A",
       materia: "Matemática",
-      ano: 2025,
+      ano: 2023,
       banca: "Exemplo",
       prova: "Simulado ENEM",
     },
@@ -196,7 +197,7 @@ function App() {
       ],
       correta: "B",
       materia: "Matemática",
-      ano: 2025,
+      ano: 2021,
       banca: "Exemplo",
       prova: "Simulado ENEM",
     },
@@ -243,14 +244,17 @@ function App() {
   function proximaQuestao() {
     setResposta(null);
     setMostrarGabarito(false);
-    setIndiceQuestao((i) => (i + 1) % questoesExemplo.length);
+    setIndiceQuestao((i) => (i + 1) % questoesFiltradas.length);
   }
+
+  // Estado para acertos/erros por área
+  const [statsPorArea, setStatsPorArea] = useState({}); // { area: { acertos, erros } }
 
   // Atualiza gráficos e progresso ao responder
   async function responderQuestao(letra) {
     if (resposta) return;
     setResposta(letra);
-    const questao = questoesExemplo[indiceQuestao];
+    const questao = questoesFiltradas[indiceQuestao]; // <-- Corrigido!
     let novoXp = xpAtual;
     let novaPontuacao = pontuacao;
     let novoAcertos = acertos;
@@ -261,7 +265,25 @@ function App() {
     let novoXpMax = xpMax;
     let passouNivel = false;
 
-    if (letra === questao.correta) {
+    // Descobre área/matéria
+    const area = (questao.assunto || questao.materia || "").toLowerCase().trim();
+
+    // Atualiza stats por área
+    setStatsPorArea((prev) => {
+      const atual = prev[area] || { acertos: 0, erros: 0 };
+      if (letra === (typeof questao.correta === "number"
+        ? questao.alternativas[questao.correta]?.letra
+        : questao.correta)) {
+        return { ...prev, [area]: { acertos: atual.acertos + 1, erros: atual.erros } };
+      } else {
+        return { ...prev, [area]: { acertos: atual.acertos, erros: atual.erros + 1 } };
+      }
+    });
+
+    // Atualiza stats globais
+    if (letra === (typeof questao.correta === "number"
+      ? questao.alternativas[questao.correta]?.letra
+      : questao.correta)) {
       novoAcertos += 1;
       novaPontuacao += 30;
       novoXp += ganhoXp;
@@ -341,18 +363,59 @@ function App() {
     ano: false,
     materia: false,
   });
-  // Lista de opções únicas para cada filtro
-  const anos = [...new Set(questoesExemplo.map((q) => q.ano))];
-  const materias = [...new Set(questoesExemplo.map((q) => q.materia))];
+  // Carrega questões do backend ao abrir aba "questoes" ou "simulados"
+  const [questoesBanco, setQuestoesBanco] = useState([]);
+
+  useEffect(() => {
+    if (aba === "questoes" || aba === "simulados") {
+      fetch(`${API_URL}/questions?limit=100`)
+        .then((res) => res.json())
+        .then((data) => setQuestoesBanco(data.questions || []));
+    }
+  }, [aba]);
+
+  // Lista de opções únicas para cada filtro (agora do banco)
+  // Normaliza para minúsculo e remove duplicados
+  const materias = [
+    ...new Set(
+      (questoesBanco || [])
+        .map((q) => (q.assunto || q.materia || "").toLowerCase().trim())
+        .filter((m) => m)
+    ),
+  ];
+
+  // DEBUG: log matérias únicas do banco
+  console.log("Materias únicas:", materias);
+
+  // Função para exibir matéria com primeira letra maiúscula
+  function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
 
   // Estado para seleção dos valores dos filtros
   const [filtroAno, setFiltroAno] = useState("");
   const [filtroMateria, setFiltroMateria] = useState("");
 
-  // Filtra as questões de exemplo conforme filtros ativos
-  const questoesFiltradas = questoesExemplo.filter((q) => {
-    if (filtros.ano && filtroAno && q.ano !== filtroAno) return false;
-    if (filtros.materia && filtroMateria && q.materia !== filtroMateria) return false;
+  // Gere lista de anos únicos das questões do banco ou exemplo
+  const anos = [
+    ...new Set(
+      ((questoesBanco && questoesBanco.length > 0) ? questoesBanco : questoesExemplo)
+        .map(q => q.ano)
+        .filter(ano => ano)
+    )
+  ].sort((a, b) => b - a); // ordena decrescente
+
+  // Filtra as questões do banco conforme filtros ativos
+  const questoesFiltradas = ((questoesBanco && questoesBanco.length > 0) ? questoesBanco : questoesExemplo).filter((q) => {
+    // Filtro por ano
+    if (filtros.ano && filtroAno !== "" && String(q.ano) !== filtroAno) return false;
+
+    // Filtro por matéria/assunto
+    const materia = (q.assunto || q.materia || "").toLowerCase().trim();
+    const filtroMateriaLower = (filtroMateria || "").toLowerCase().trim();
+    if (filtros.materia && filtroMateriaLower !== "" && filtroMateriaLower !== "todas") {
+      if (materia !== filtroMateriaLower) return false;
+    }
     return true;
   });
 
@@ -562,199 +625,97 @@ function App() {
       );
     }
     if (aba === "desempenho") {
-      // Cálculos
-      const totalQuestoes = acertos + erros;
-      const acertosPerc =
-        totalQuestoes > 0 ? Math.round((acertos / totalQuestoes) * 100) : 0;
-      const errosPerc = 100 - acertosPerc;
-      const nota = totalQuestoes
-        ? ((acertos / totalQuestoes) * 10).toFixed(2)
-        : "0.00";
+      // Função para calcular stats de uma área
+      function statsArea(area) {
+        if (area === "geral") {
+          return { 
+            totalRespondidas: acertos + erros, 
+            acertos, 
+            erros, 
+            aproveitamento: (acertos + erros) > 0 ? Math.round((acertos / (acertos + erros)) * 100) : 0 
+          };
+        }
+        const stat = statsPorArea[area] || { acertos: 0, erros: 0 };
+        const totalRespondidas = stat.acertos + stat.erros;
+        return { 
+          totalRespondidas, 
+          acertos: stat.acertos, 
+          erros: stat.erros, 
+          aproveitamento: totalRespondidas > 0 ? Math.round((stat.acertos / totalRespondidas) * 100) : 0 
+        };
+      }
 
-      // Gráfico de pizza SVG
-      const r = 60,
-        cx = 80,
-        cy = 80;
-      const acertosAngle = (acertosPerc / 100) * 360;
-      const errosAngle = 360 - acertosAngle;
-      const polarToCartesian = (cx, cy, r, angle) => {
-        const a = ((angle - 90) * Math.PI) / 180.0;
-        return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-      };
-      const describeArc = (cx, cy, r, startAngle, endAngle) => {
-        const start = polarToCartesian(cx, cy, r, endAngle);
-        const end = polarToCartesian(cx, cy, r, startAngle);
-        const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
-        return [
-          "M",
-          start.x,
-          start.y,
-          "A",
-          r,
-          r,
-          0,
-          largeArcFlag,
-          0,
-          end.x,
-          end.y,
-        ].join(" ");
-      };
+      // Áreas
+      const areas = [
+        { id: "geral", nome: "Geral" },
+        ...materias.map(m => ({ id: m, nome: capitalize(m) }))
+      ];
 
-      // Gráfico de barras SVG
-      const barMax = Math.max(acertos, erros, 1);
-      const barHeight = 80;
-      const acertosBar = (acertos / barMax) * 120;
-      const errosBar = (erros / barMax) * 120;
+      // Renderiza barra horizontal para cada área
+      function BarraArea({ areaId, nome }) {
+        const stats = statsArea(areaId);
+        const corBarra = areaId === "matematica" ? pastel.correto
+          : areaId === "naturezas" ? "#90ee90"
+          : areaId === "linguagens" ? "#ffd700"
+          : areaId === "humanas" ? "#87ceeb"
+          : pastel.botao;
+
+        return (
+          <div style={{
+            width: "100%",
+            marginBottom: 24,
+            background: pastel.branco,
+            borderRadius: 14,
+            boxShadow: "0 2px 8px #0001",
+            padding: "18px 32px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+          }}>
+            <div style={{ fontWeight: "bold", fontSize: 22, color: pastel.botao, marginBottom: 8 }}>
+              {nome}
+            </div>
+            <div style={{ width: "100%", marginBottom: 8, fontSize: 16, color: pastel.texto }}>
+              Aproveitamento: <b>{stats.aproveitamento}%</b> &nbsp;|&nbsp; Respondidas: {stats.totalRespondidas}
+            </div>
+            <div style={{
+              width: "100%",
+              height: 32,
+              background: pastel.destaque,
+              borderRadius: 10,
+              position: "relative",
+              overflow: "hidden",
+            }}>
+              <div style={{
+                width: `${stats.aproveitamento}%`,
+                height: "100%",
+                background: corBarra,
+                borderRadius: 10,
+                transition: "width 0.4s",
+              }}></div>
+              <span style={{
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                fontWeight: "bold",
+                color: pastel.texto,
+                fontSize: 18,
+              }}>
+                {stats.aproveitamento}%
+              </span>
+            </div>
+          </div>
+        );
+      }
 
       return (
         <div style={{ padding: 24 }}>
-          <h2 style={{ color: pastel.botao }}>Desempenho</h2>
-          <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
-            {/* Gráfico de pizza */}
-            <div
-              style={{
-                background: pastel.branco,
-                borderRadius: 12,
-                boxShadow: "0 2px 8px #0001",
-                padding: 24,
-              }}
-            >
-              <svg width={160} height={160}>
-                {/* Erros (vermelho) */}
-                <path
-                  d={describeArc(cx, cy, r, acertosAngle, 360)}
-                  fill="none"
-                  stroke={pastel.erro}
-                  strokeWidth={24}
-                />
-                {/* Acertos (verde) */}
-                <path
-                  d={describeArc(cx, cy, r, 0, acertosAngle)}
-                  fill="none"
-                  stroke={pastel.correto}
-                  strokeWidth={24}
-                />
-                {/* Círculo central branco */}
-                <circle cx={cx} cy={cy} r={r - 24} fill={pastel.branco} />
-                {/* Texto central */}
-                <text
-                  x={cx}
-                  y={cy + 6}
-                  textAnchor="middle"
-                  fontSize="28"
-                  fontWeight="bold"
-                  fill={pastel.texto}
-                >
-                  {nota}
-                </text>
-              </svg>
-              <div
-                style={{
-                  textAlign: "center",
-                  marginTop: 8,
-                  fontWeight: "bold",
-                }}
-              >
-                Nota <span style={{ color: pastel.botao }}>{nota}</span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  gap: 16,
-                  marginTop: 8,
-                }}
-              >
-                <span
-                  style={{
-                    color: pastel.correto,
-                    fontWeight: "bold",
-                  }}
-                >
-                  Acertos
-                </span>
-                <span
-                  style={{
-                    color: pastel.erro,
-                    fontWeight: "bold",
-                  }}
-                >
-                  Erros
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  gap: 16,
-                  fontSize: 14,
-                }}
-              >
-                <span style={{ color: pastel.correto }}>
-                  {acertos} ({acertosPerc}%)
-                </span>
-                <span style={{ color: pastel.erro }}>
-                  {erros} ({errosPerc}%)
-                </span>
-              </div>
-            </div>
-            {/* Gráfico de barras */}
-            <div
-              style={{
-                background: pastel.branco,
-                borderRadius: 12,
-                boxShadow: "0 2px 8px #0001",
-                padding: 24,
-              }}
-            >
-              <svg width={180} height={barHeight + 40}>
-                {/* Acertos */}
-                <rect
-                  x={30}
-                  y={barHeight - acertosBar + 20}
-                  width={40}
-                  height={acertosBar}
-                  fill={pastel.correto}
-                  rx={8}
-                />
-                <text
-                  x={50}
-                  y={barHeight + 36}
-                  textAnchor="middle"
-                  fontSize="14"
-                  fill={pastel.texto}
-                >
-                  Acertos
-                </text>
-                {/* Erros */}
-                <rect
-                  x={110}
-                  y={barHeight - errosBar + 20}
-                  width={40}
-                  height={errosBar}
-                  fill={pastel.erro}
-                  rx={8}
-                />
-                <text
-                  x={130}
-                  y={barHeight + 36}
-                  textAnchor="middle"
-                  fontSize="14"
-                  fill={pastel.texto}
-                >
-                  Erros
-                </text>
-              </svg>
-              <div
-                style={{
-                  textAlign: "center",
-                  marginTop: 8,
-                  fontSize: 14,
-                }}
-              >
-                Total de questões: <b>{totalQuestoes}</b>
-              </div>
-            </div>
+          <h2 style={{ color: pastel.botao, marginBottom: 24 }}>Desempenho Geral e por Área</h2>
+          <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
+            {areas.map(area => (
+              <BarraArea key={area.id} areaId={area.id} nome={area.nome} />
+            ))}
           </div>
           <div
             style={{
@@ -765,21 +726,104 @@ function App() {
               textAlign: "center",
             }}
           >
-            <span style={{ fontSize: 18, fontWeight: "bold" }}>Resumo</span>
+            <span style={{ fontSize: 18, fontWeight: "bold" }}>Resumo Geral</span>
             <div style={{ marginTop: 10 }}>
               <b>Acertos:</b> {acertos} &nbsp;|&nbsp; <b>Erros:</b> {erros}{" "}
-              &nbsp;|&nbsp; <b>Aproveitamento:</b> {acertosPerc}%
+              &nbsp;|&nbsp; <b>Aproveitamento:</b> {(acertos + erros) > 0 ? Math.round((acertos / (acertos + erros)) * 100) : 0}%
             </div>
           </div>
         </div>
       );
     }
     if (aba === "questoes") {
-      // Troque questaoExemplo por questoesFiltradas[indiceQuestao]
       const questaoExemplo = questoesFiltradas[indiceQuestao];
       const corAcerto = pastel.correto;
       const corErro = pastel.erro;
       const corPadrao = pastel.fundo;
+
+      // Descobre o índice correto da alternativa
+      const corretaIndex = questaoExemplo
+        ? (typeof questaoExemplo.correta === "number"
+            ? questaoExemplo.correta
+            : questaoExemplo.alternativas.findIndex(
+              (alt) => alt.letra === questaoExemplo.correta
+            ))
+        : -1;
+
+      // Painel de filtros sempre aparece
+      const painelFiltros = (
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "100%",
+            marginBottom: 24,
+            background: pastel.destaque,
+            borderRadius: 10,
+            padding: "18px 24px",
+            boxSizing: "border-box",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 24,
+            alignItems: "center",
+            overflow: "auto",
+          }}
+        >
+          <span style={{ fontWeight: "bold", fontSize: 18, marginRight: 12 }}>
+            Filtros:
+          </span>
+          {/* Checkbox para Ano */}
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={filtros.ano}
+              onChange={(e) =>
+                setFiltros((f) => ({ ...f, ano: e.target.checked }))
+              }
+            />
+            Ano
+            {filtros.ano && (
+              <select
+                value={filtroAno}
+                onChange={(e) => setFiltroAno(e.target.value)}
+                style={{ marginLeft: 8, padding: 4, borderRadius: 6 }}
+              >
+                <option value="">Todos</option>
+                {anos.map((ano) => (
+                  <option key={ano} value={String(ano)}>
+                    {ano}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+          {/* Checkbox para Matéria */}
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={filtros.materia}
+              onChange={(e) =>
+                setFiltros((f) => ({ ...f, materia: e.target.checked }))
+              }
+            />
+            Matéria
+            {filtros.materia && (
+              <select
+                value={filtroMateria}
+                onChange={(e) => setFiltroMateria(e.target.value)}
+                style={{ marginLeft: 8, padding: 4, borderRadius: 6 }}
+              >
+                <option value="todas">Todas</option>
+                {materias.map((m) => (
+                  <option key={m} value={m}>
+                    {capitalize(m)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+        </div>
+      );
 
       return (
         <div
@@ -796,314 +840,262 @@ function App() {
             flexDirection: "column",
             alignItems: "flex-start",
             boxSizing: "border-box",
-            overflow: "hidden", // garante que nada ultrapasse
+            overflow: "hidden",
           }}
         >
-          {/* Painel de filtros */}
-          <div
-            style={{
-              width: "100%",
-              maxWidth: "100%",
-              marginBottom: 24,
-              background: pastel.destaque,
-              borderRadius: 10,
-              padding: "18px 24px",
-              boxSizing: "border-box",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 24,
-              alignItems: "center",
-              overflow: "auto", // se passar, aparece scroll horizontal
-            }}
-          >
-            <span style={{ fontWeight: "bold", fontSize: 18, marginRight: 12 }}>
-              Filtros:
-            </span>
-            {/* Checkbox para Ano */}
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={filtros.ano}
-                onChange={(e) =>
-                  setFiltros((f) => ({ ...f, ano: e.target.checked }))
-                }
-              />
-              Ano
-              {filtros.ano && (
-                <select
-                  value={filtroAno}
-                  onChange={(e) => setFiltroAno(Number(e.target.value))}
-                  style={{ marginLeft: 8, padding: 4, borderRadius: 6 }}
-                >
-                  <option value="">Todos</option>
-                  {anos.map((ano) => (
-                    <option key={ano} value={ano}>
-                      {ano}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </label>
-            {/* Checkbox para Matéria */}
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={filtros.materia}
-                onChange={(e) =>
-                  setFiltros((f) => ({ ...f, materia: e.target.checked }))
-                }
-              />
-              Matéria
-              {filtros.materia && (
-                <select
-                  value={filtroMateria}
-                  onChange={(e) => setFiltroMateria(e.target.value)}
-                  style={{ marginLeft: 8, padding: 4, borderRadius: 6 }}
-                >
-                  <option value="">Todas</option>
-                  {materias.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </label>
-          </div>
-          <div
-            style={{
-              fontSize: 16,
-              color: pastel.texto,
-              marginBottom: 10,
-              display: "flex",
-              justifyContent: "space-between",
-              width: "100%",
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <b>{questoesFiltradas[indiceQuestao]?.materia}</b> |{" "}
-              {questoesFiltradas[indiceQuestao]?.ano} |{" "}
-              {questoesFiltradas[indiceQuestao]?.banca} |{" "}
-              {questoesFiltradas[indiceQuestao]?.prova}
+          {painelFiltros}
+          {!questaoExemplo ? (
+            <div style={{ padding: 48, textAlign: "center", color: pastel.texto }}>
+              <h2>Nenhuma questão encontrada para esse filtro.</h2>
+              <p>Selecione outro ano ou matéria, ou adicione questões no banco.</p>
             </div>
-            {/* Timer só aparece se ainda não respondeu */}
-            {!resposta && (
-              <Timer key={timerKey} duration={180} onTimeUp={handleTimeUp} />
-            )}
-          </div>
-          <div
-            style={{
-              fontSize: 24,
-              marginBottom: 28,
-              fontWeight: "bold",
-              color: pastel.texto,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-            }}
-          >
-            <span>{questoesFiltradas[indiceQuestao]?.enunciado}</span>
-            {resposta && (
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    questoesFiltradas[indiceQuestao]?.enunciado
-                  );
-                }}
+          ) : (
+            <>
+              <div
                 style={{
-                  marginLeft: 18,
-                  background: pastel.botao,
-                  color: pastel.texto,
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "8px 18px",
-                  fontWeight: "bold",
                   fontSize: 16,
-                  cursor: "pointer",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                  transition: "background 0.2s",
+                  color: pastel.texto,
+                  marginBottom: 10,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  alignItems: "center",
                 }}
-                title="Copiar enunciado"
               >
-                Copiar Enunciado
-              </button>
-            )}
-          </div>
-          <div style={{ width: "100%" }}>
-            {questoesFiltradas[indiceQuestao]?.alternativas.map((alt) => {
-              let bg = corPadrao;
-              let border = "1.5px solid #ddd";
-              let color = pastel.texto;
-              if (resposta) {
-                if (
-                  alt.letra === resposta &&
-                  resposta === questaoExemplo.correta
-                ) {
-                  bg = corAcerto;
-                  border = `2.5px solid ${corAcerto}`;
-                } else if (
-                  alt.letra === resposta &&
-                  resposta !== questaoExemplo.correta
-                ) {
-                  bg = corErro;
-                  border = `2.5px solid ${corErro}`;
-                } else if (
-                  alt.letra === questaoExemplo.correta &&
-                  mostrarGabarito
-                ) {
-                  bg = corAcerto;
-                  border = `2.5px solid ${corAcerto}`;
-                }
-              }
-              return (
-                <div
-                  key={alt.letra}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-start",
-                    marginBottom: 18,
-                    background: bg,
-                    borderRadius: 10,
-                    padding: "18px 24px",
-                    fontSize: 20,
-                    cursor: resposta ? "default" : "pointer",
-                    border,
-                    boxShadow: resposta ? "0 2px 8px rgba(0,0,0,0.04)" : "none",
-                    transition: "background 0.2s, border 0.2s",
-                    color,
-                    width: "100%",
-                    minWidth: "320px",
-                    maxWidth: "100%",
-                    minHeight: 48,
-                    boxSizing: "border-box",
-                    wordBreak: "break-word", // garante quebra de linha
-                  }}
-                  onClick={() => {
-                    if (!resposta) responderQuestao(alt.letra);
-                  }}
-                >
-                  <span
+                <div>
+                  {/* Ajuste aqui: ENEM/ANO/assunto */}
+                  <b>
+                    ENEM/{questoesFiltradas[indiceQuestao]?.ano}
+                    {questoesFiltradas[indiceQuestao]?.materia || questoesFiltradas[indiceQuestao]?.assunto
+                      ? `/${capitalize(questoesFiltradas[indiceQuestao]?.materia || questoesFiltradas[indiceQuestao]?.assunto)}`
+                      : ""}
+                  </b>
+                  {/* Se quiser mostrar banca e prova, pode adicionar depois */}
+                </div>
+                {/* Timer só aparece se ainda não respondeu */}
+                {!resposta && (
+                  <Timer key={timerKey} duration={180} onTimeUp={handleTimeUp} />
+                )}
+              </div>
+              <div
+                style={{
+                  fontSize: 24,
+                  marginBottom: 28,
+                  fontWeight: "bold",
+                  color: pastel.texto,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                }}
+              >
+                <span>{questoesFiltradas[indiceQuestao]?.enunciado}</span>
+                {resposta && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        questoesFiltradas[indiceQuestao]?.enunciado
+                      );
+                    }}
                     style={{
-                      display: "inline-block",
-                      width: 38,
-                      height: 38,
-                      borderRadius: "50%",
+                      marginLeft: 18,
                       background: pastel.botao,
                       color: pastel.texto,
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 18px",
                       fontWeight: "bold",
-                      textAlign: "center",
-                      lineHeight: "38px",
-                      marginRight: 18,
-                      fontSize: 20,
-                      border: "2px solid #fff",
-                      boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
-                      flexShrink: 0,
+                      fontSize: 16,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                      transition: "background 0.2s",
                     }}
+                    title="Copiar enunciado"
                   >
-                    {alt.letra}
-                  </span>
-                  <span
+                    Copiar Enunciado
+                  </button>
+                )}
+              </div>
+              <div style={{ width: "100%" }}>
+                {questoesFiltradas[indiceQuestao]?.alternativas.map((alt, idx) => {
+                  let bg = corPadrao;
+                  let border = "1.5px solid #ddd";
+                  let color = pastel.texto;
+                  // Se respondeu, pinta a alternativa selecionada
+                  if (resposta) {
+                    if (
+                      alt.letra === resposta &&
+                      idx === corretaIndex
+                    ) {
+                      bg = corAcerto;
+                      border = `2.5px solid ${corAcerto}`;
+                    } else if (
+                      alt.letra === resposta &&
+                      idx !== corretaIndex
+                    ) {
+                      bg = corErro;
+                      border = `2.5px solid ${corErro}`;
+                    } else if (
+                      mostrarGabarito &&
+                      idx === corretaIndex
+                    ) {
+                      bg = corAcerto;
+                      border = `2.5px solid ${corAcerto}`;
+                    }
+                  } else if (mostrarGabarito && idx === corretaIndex) {
+                    bg = corAcerto;
+                    border = `2.5px solid ${corAcerto}`;
+                  }
+                  return (
+                    <div
+                      key={alt.letra}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-start",
+                        marginBottom: 18,
+                        background: bg,
+                        borderRadius: 10,
+                        padding: "18px 24px",
+                        fontSize: 20,
+                        cursor: resposta ? "default" : "pointer",
+                        border,
+                        boxShadow: resposta ? "0 2px 8px rgba(0,0,0,0.04)" : "none",
+                        transition: "background 0.2s, border 0.2s",
+                        color,
+                        width: "100%",
+                        minWidth: "320px",
+                        maxWidth: "100%",
+                        minHeight: 48,
+                        boxSizing: "border-box",
+                        wordBreak: "break-word",
+                      }}
+                      onClick={() => {
+                        if (!resposta) responderQuestao(alt.letra);
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "inline-block", 
+                          width: 38,
+                          height: 38,
+                          borderRadius: "50%",
+                          background: pastel.botao,
+                          color: pastel.texto,
+                          fontWeight: "bold",
+                          textAlign: "center",
+                          lineHeight: "38px",
+                          marginRight: 18,
+                          fontSize: 20,
+                          border: "2px solid #fff",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {alt.letra}
+                      </span>
+                      <span
+                        style={{
+                          flex: 1,
+                          wordBreak: "break-word",
+                          whiteSpace: "pre-line",
+                        }}
+                      >
+                        {alt.texto}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {resposta && (
+                <div
+                  style={{
+                    marginTop: 24,
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  <button
+                    onClick={() => setMostrarGabarito((v) => !v)}
                     style={{
-                      flex: 1,
-                      wordBreak: "break-word",
-                      whiteSpace: "pre-line",
+                      background: pastel.botao,
+                      color: pastel.texto,
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "12px 28px",
+                      fontWeight: "bold",
+                      fontSize: 18,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                      marginRight: 16,
                     }}
                   >
-                    {alt.texto}
-                  </span>
+                    {mostrarGabarito ? "Ocultar Gabarito" : "Mostrar Gabarito"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      proximaQuestao();
+                    }}
+                    style={{
+                      background: pastel.destaque,
+                      color: pastel.texto,
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "12px 28px",
+                      fontWeight: "bold",
+                      fontSize: 18,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                      marginLeft: 8,
+                    }}
+                  >
+                    Próxima Questão
+                  </button>
+                  {resposta === questaoExemplo.correta ? (
+                    <span
+                      style={{
+                        color: corAcerto,
+                        fontWeight: "bold",
+                        fontSize: 18,
+                        marginLeft: 12,
+                      }}
+                    >
+                      ✔ Resposta correta!
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        color: corErro,
+                        fontWeight: "bold",
+                        fontSize: 18,
+                        marginLeft: 12,
+                      }}
+                    >
+                      ✖ Resposta incorreta.
+                    </span>
+                  )}
                 </div>
-              );
-            })}
-          </div>
-          {resposta && (
-            <div
-              style={{
-                marginTop: 24,
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <button
-                onClick={() => setMostrarGabarito((v) => !v)}
-                style={{
-                  background: pastel.botao,
-                  color: pastel.texto,
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "12px 28px",
-                  fontWeight: "bold",
-                  fontSize: 18,
-                  cursor: "pointer",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                  marginRight: 16,
-                }}
-              >
-                {mostrarGabarito ? "Ocultar Gabarito" : "Mostrar Gabarito"}
-              </button>
-              <button
-                onClick={() => {
-                  proximaQuestao();
-                }}
-                style={{
-                  background: pastel.destaque,
-                  color: pastel.texto,
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "12px 28px",
-                  fontWeight: "bold",
-                  fontSize: 18,
-                  cursor: "pointer",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                  marginLeft: 8,
-                }}
-              >
-                Próxima Questão
-              </button>
-              {resposta === questaoExemplo.correta ? (
-                <span
-                  style={{
-                    color: corAcerto,
-                    fontWeight: "bold",
-                    fontSize: 18,
-                    marginLeft: 12,
-                  }}
-                >
-                  ✔ Resposta correta!
-                </span>
-              ) : (
-                <span
-                  style={{
-                    color: corErro,
-                    fontWeight: "bold",
-                    fontSize: 18,
-                    marginLeft: 12,
-                  }}
-                >
-                  ✖ Resposta incorreta.
-                </span>
               )}
-            </div>
-          )}
-          {mostrarGabarito && (
-            <div
-              style={{
-                marginTop: 18,
-                fontSize: 18,
-                color: pastel.correto,
-                background: pastel.destaque,
-                borderRadius: 8,
-                padding: "10px 22px",
-                fontWeight: "bold",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-              }}
-            >
-              Gabarito: {questaoExemplo.correta}
-            </div>
+              {mostrarGabarito && (
+                <div
+                  style={{
+                    marginTop: 18,
+                    fontSize: 18,
+                    color: pastel.correto,
+                    background: pastel.destaque,
+                    borderRadius: 8,
+                    padding: "10px 22px",
+                    fontWeight: "bold",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                  }}
+                >
+                  Gabarito: {typeof questaoExemplo.correta === "number"
+                    ? questaoExemplo.alternativas[questaoExemplo.correta]?.letra
+                    : questaoExemplo.correta}
+                </div>
+              )}
+            </>
           )}
         </div>
       );
@@ -1242,6 +1234,63 @@ function App() {
         </div>
       );
     }
+    if (aba === "simulados") {
+      // Pegue todos os anos únicos das questões de exemplo
+      const anosSimulados = [...new Set(questoesExemplo.map((q) => q.ano))];
+      // Cores para os quadrados (pode expandir)
+      const cores = [
+        "#a3a3ff",
+        "#ffd700",
+        "#90ee90",
+        "#ffb6c1",
+        "#87ceeb",
+        "#ffa07a",
+        "#e0e0e0",
+      ];
+      return (
+        <div style={{ padding: 32 }}>
+          <h2 style={{ color: pastel.botao, marginBottom: 24 }}>Simulados ENEM</h2>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 24,
+            }}
+          >
+            {anosSimulados.map((ano, idx) => (
+              <div
+                key={ano}
+                style={{
+                  background: cores[idx % cores.length],
+                  borderRadius: 16,
+                  padding: "32px 48px",
+                  fontSize: 28,
+                  fontWeight: "bold",
+                  color: "#222",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+                  transition: "background 0.2s",
+                  minWidth: 180,
+                  textAlign: "center",
+                }}
+                onClick={() => {
+                  setAba("questoes");
+                  setFiltros({ ...filtros, ano: true });
+                  setFiltroAno(ano);
+                }}
+                title={`Ver questões do ENEM ${ano}`}
+              >
+                ENEM {ano}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 32, color: pastel.texto, fontSize: 16 }}>
+            Clique em um ano para ver as questões daquele ENEM.<br />
+            (Em breve, cada simulado terá suas próprias questões!)
+          </div>
+        </div>
+      );
+    }
     return null;
   }
 
@@ -1320,6 +1369,27 @@ function App() {
     }
   };
 
+  // Função para atualizar perfil no backend
+  async function atualizarPerfilBackend(nome, avatarColor) {
+    if (!usuario) return;
+    try {
+      await fetch(`${API_URL}/update-profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: usuario.email,
+          nome,
+          avatarColor,
+        }),
+      });
+      // Opcional: atualizar localmente o usuário
+      setUsuario((u) => u ? { ...u, nome, avatarColor } : u);
+    } catch (err) {
+      // Silencie erro, só log
+      console.error("Erro ao atualizar perfil:", err);
+    }
+  }
+
   if (tela === "game") {
     return (
       <>
@@ -1342,11 +1412,6 @@ function App() {
             gap: 10,
           }}
         >
-          <img
-            src="https://www.clipartmax.com/png/middle/39-394785_books-livro-clipart.png"
-            alt="Logo QuizENEM"
-            style={{ height: 32, width: 32, marginRight: 8 }}
-          />
           QuizENEM
         </div>
         <div
@@ -1494,11 +1559,6 @@ function App() {
               borderBottom: `1.5px solid ${pastel.fundo}`,
             }}
           >
-            <img
-              src="https://www.clipartmax.com/png/middle/39-394785_books-livro-clipart.png"
-              alt="Logo QuizENEM"
-              style={{ height: 44, width: 44, marginRight: 4 }}
-            />
             <span
               style={{
                 fontSize: 28,
@@ -1666,5 +1726,10 @@ function App() {
 }
 
 export default App;
+
+
+
+
+
 
 

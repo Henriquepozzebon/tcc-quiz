@@ -254,6 +254,105 @@ app.get("/questions", async (req, res) => {
   }
 });
 
+// ROTA PARA POPULAR QUESTÕES DE EXEMPLO NO MONGO
+app.post("/populate-questions", async (req, res) => {
+  // Array de questões de exemplo
+  const questoesExemplo = [
+    {
+      assunto: "matematica",
+      ano: 2025,
+      enunciado: "Qual é o resultado de 2 + 2?",
+      alternativas: [
+        { letra: "A", texto: "3" },
+        { letra: "B", texto: "4" },
+        { letra: "C", texto: "5" },
+        { letra: "D", texto: "6" },
+        { letra: "E", texto: "2" }
+      ],
+      correta: "B",
+      nivel: 1,
+      tema: "",
+    },
+    {
+      assunto: "matematica",
+      ano: 2025,
+      enunciado: "Quanto é 5 x 6?",
+      alternativas: [
+        { letra: "A", texto: "30" },
+        { letra: "B", texto: "35" },
+        { letra: "C", texto: "25" },
+        { letra: "D", texto: "11" },
+        { letra: "E", texto: "56" }
+      ],
+      correta: "A",
+      nivel: 1,
+      tema: "",
+    },
+    {
+      assunto: "matematica",
+      ano: 2025,
+      enunciado: "Qual é a raiz quadrada de 81?",
+      alternativas: [
+        { letra: "A", texto: "7" },
+        { letra: "B", texto: "8" },
+        { letra: "C", texto: "9" },
+        { letra: "D", texto: "10" },
+        { letra: "E", texto: "6" }
+      ],
+      correta: "C",
+      nivel: 1,
+      tema: "",
+    },
+    {
+      assunto: "matematica",
+      ano: 2025,
+      enunciado: "Se x = 3, quanto vale 2x + 4?",
+      alternativas: [
+        { letra: "A", texto: "10" },
+        { letra: "B", texto: "9" },
+        { letra: "C", texto: "8" },
+        { letra: "D", texto: "7" },
+        { letra: "E", texto: "6" }
+      ],
+      correta: "A",
+      nivel: 1,
+      tema: "",
+    },
+    {
+      assunto: "matematica",
+      ano: 2025,
+      enunciado: "Qual é o valor de 12 ÷ 4?",
+      alternativas: [
+        { letra: "A", texto: "2" },
+        { letra: "B", texto: "3" },
+        { letra: "C", texto: "4" },
+        { letra: "D", texto: "6" },
+        { letra: "E", texto: "8" }
+      ],
+      correta: "B",
+      nivel: 1,
+      tema: "",
+    }
+  ];
+
+  try {
+    // Remove questões antigas (opcional)
+    await Question.deleteMany({ ano: 2025, assunto: "matematica" });
+    // Insere as novas
+    for (const q of questoesExemplo) {
+      // Converte correta para índice
+      if (typeof q.correta === "string") {
+        q.correta = q.correta.toUpperCase().charCodeAt(0) - 65;
+      }
+      await Question.create(q);
+    }
+    res.json({ mensagem: "Questões de exemplo inseridas!" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ mensagem: "Erro ao popular questões" });
+  }
+});
+
 // Migrar senhas para o formato hash (temporário)
 // ATENÇÃO: USE APENAS SE AS SENHAS ESTIVEREM EM TEXTO PLANO NO BANCO
 app.post("/migrate-passwords", async (req, res) => {
