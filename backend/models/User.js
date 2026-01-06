@@ -19,6 +19,7 @@ const UserSchema = new mongoose.Schema(
     xpMax: { type: Number, default: 100 },
     nome: { type: String, default: "Jogador" },
     avatarColor: { type: String, default: "#a3a3ff" },
+    statsPorArea: { type: Object, default: {} },
   },
   { timestamps: true }
 );

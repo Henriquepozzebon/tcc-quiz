@@ -165,7 +165,7 @@ app.post("/login", async (req, res) => {
 // Atualizar estatísticas
 app.post("/update-stats", async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, statsPorArea } = req.body;
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const usuario = await User.findOneAndUpdate(
       { email: normalizedEmail },
@@ -176,6 +176,7 @@ app.post("/update-stats", async (req, res) => {
         nivel: req.body.nivel,
         xpAtual: req.body.xpAtual,
         xpMax: req.body.xpMax,
+        statsPorArea: statsPorArea || {},
       },
       { new: true }
     );
