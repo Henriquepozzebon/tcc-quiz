@@ -1,8 +1,17 @@
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+  width: 100vw;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
   text-align: center;
+  box-sizing: border-box;
+}
+
+/* Responsividade para telas pequenas */
+@media (max-width: 600px) {
+  #root {
+    padding: 0.5rem;
+  }
 }
 
 .logo {
@@ -39,4 +48,8 @@
 
 .read-the-docs {
   color: #888;
+}
+
+body, #root {
+  font-family: 'Segoe UI', 'Arial', 'Helvetica Neue', 'sans-serif';
 }

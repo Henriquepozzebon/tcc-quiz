@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Timer from "./components/Timer";
-import './App.css';
+
+
 // Certifique-se de que o API_URL está correto
 const API_URL = "https://tcc-quiz.onrender.com"; // Backend publicado
 
@@ -2030,7 +2031,6 @@ function App() {
             position: "fixed",
             top: 0,
             left: 0,
-           
             width: "100vw",
             height: "100vh",
             background: "rgba(0,0,0,0.25)",
