@@ -17,17 +17,34 @@ function App() {
   const [showParabens, setShowParabens] = useState(false);
   const [nome, setNome] = useState("Jogador");
   const [avatarColor, setAvatarColor] = useState("#a3a3ff");
+  const [descricao, setDescricao] = useState(""); // Troque bio por descricao
+  const [tema, setTema] = useState("claro"); // Novo estado para tema
   const [isLoading, setIsLoading] = useState(false); // Novo estado para controle de loading
 
-  const pastel = {
-    fundo: "#e3e9f7",
-    botao: "#7ec6f7",
-    correto: "#6fdc7a",
-    erro: "#ff8c9b",
-    destaque: "#e3e9f7", // Substituído: era amarelo, agora igual ao fundo
-    branco: "#fff",
-    texto: "#1a1a1a",
-  };
+  // Definição dinâmica das cores do tema
+  const pastel = tema === "escuro"
+    ? {
+        fundo: "#23272f",
+        botao: "#3a8fd6",
+        correto: "#6fdc7a",
+        erro: "#ff8c9b",
+        destaque: "#23272f",
+        branco: "#2d323c",
+        texto: "#fff",
+        textoTabela: "#fff",
+        textoSecundario: "#e3e9f7",
+      }
+    : {
+        fundo: "#e3e9f7",
+        botao: "#7ec6f7",
+        correto: "#6fdc7a",
+        erro: "#ff8c9b",
+        destaque: "#e3e9f7",
+        branco: "#fff",
+        texto: "#1a1a1a",
+        textoTabela: "#1a1a1a",
+        textoSecundario: "#888",
+      };
 
   useEffect(() => {
     fetch(`${API_URL}/`)
@@ -358,18 +375,19 @@ function App() {
     }
   }, [aba]);
 
-  // Carregar nome, cor e statsPorArea do backend ao logar
+  // Carregar nome, cor, bio, tema e statsPorArea do backend ao logar
   useEffect(() => {
     if (usuario) {
       setNome(usuario.nome || "Jogador");
       setAvatarColor(usuario.avatarColor || "#a3a3ff");
+      setDescricao(usuario.descricao || "");
+      setTema(usuario.tema || "claro");
       setPontuacao(usuario.pontuacao || 0);
       setAcertos(usuario.acertos || 0);
       setErros(usuario.erros || 0);
       setNivel(usuario.nivel || 1);
       setXpAtual(usuario.xpAtual || 0);
       setXpMax(usuario.xpMax || 100);
-      // Corrigido: statsPorArea SEMPRE inicializa, mesmo se vazio
       setStatsPorArea(usuario.statsPorArea && typeof usuario.statsPorArea === "object" ? usuario.statsPorArea : {});
     }
   }, [usuario]);
@@ -507,10 +525,12 @@ function App() {
               borderRadius: 18,
               boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
               padding: "32px 40px 32px 40px",
-              marginBottom: 32,
+              marginBottom: 40, // aumente o espaçamento entre os quadros
+              marginTop: 12,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
+              border: `2.5px solid ${pastel.botao}`, // Adiciona borda azul ao primeiro quadro
             }}
           >
             <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 28 }}>
@@ -535,6 +555,7 @@ function App() {
                 {nome?.[0]?.toUpperCase() || "?"}
               </div>
               <div style={{ flex: 1, minWidth: 180 }}>
+                {/* Nome editável */}
                 <div
                   style={{
                     fontWeight: "bold",
@@ -542,10 +563,55 @@ function App() {
                     color: pastel.texto,
                     marginBottom: 2,
                     letterSpacing: 0.5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
                   }}
                 >
-                  {nome}
+                  <input
+                    type="text"
+                    value={nome}
+                    maxLength={20}
+                    onChange={(e) => setNome(e.target.value)}
+                    onBlur={() => atualizarPerfilBackend(nome, avatarColor, descricao, tema)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        atualizarPerfilBackend(nome, avatarColor, descricao, tema);
+                        e.target.blur();
+                      }
+                    }}
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: 28,
+                      color: pastel.texto,
+                      background: "transparent",
+                      border: "1.5px solid #ccc",
+                      borderRadius: 6,
+                      padding: "2px 10px",
+                      outline: "none",
+                      width: "auto",
+                      minWidth: 60,
+                      maxWidth: 220,
+                      marginRight: 6,
+                      transition: "border 0.2s",
+                    }}
+                  />
                 </div>
+                {/* Adiciona a descrição abaixo do nome */}
+                {descricao && (
+                  <div
+                    style={{
+                      fontSize: 16,
+                      color: pastel.texto,
+                      marginBottom: 8,
+                      wordBreak: "break-word",
+                      whiteSpace: "pre-line",
+                    }}
+                  >
+                    {descricao}
+                  </div>
+                )}
                 <div
                   style={{
                     display: "flex",
@@ -669,7 +735,6 @@ function App() {
               </div>
             )}
           </div>
-
           {/* Mensagem de boas-vindas - quadro branco com borda azul pastel */}
           <div
             style={{
@@ -680,7 +745,7 @@ function App() {
               boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
               border: `2.5px solid ${pastel.botao}`,
               padding: "24px 32px",
-              marginBottom: 32,
+              marginBottom: 40, // aumente o espaçamento entre os quadros
               textAlign: "center",
               transition: "background 0.2s, box-shadow 0.2s",
             }}
@@ -706,8 +771,7 @@ function App() {
               <span style={{ color: pastel.correto, fontWeight: "bold" }}>Bons estudos e boa sorte!</span>
             </div>
           </div>
-
-          {/* Cards de estatísticas - grid para alinhamento perfeito em 3 colunas e 1 linha */}
+          {/* Cards de estatísticas */}
           <div
             style={{
               display: "grid",
@@ -716,9 +780,10 @@ function App() {
               gap: 32,
               width: "80vw",
               maxWidth: 900,
-              minHeight: 180, // garante altura mínima igual para todas as linhas
+              minHeight: 180,
               alignItems: "stretch",
               justifyItems: "stretch",
+              marginBottom: 24, // adiciona espaçamento inferior
             }}
           >
             {/* Pontuação Total */}
@@ -1109,6 +1174,7 @@ function App() {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
+            color: pastel.texto, // fonte principal das questões
           }}
         >
           <div
@@ -1129,6 +1195,7 @@ function App() {
               alignItems: "flex-start",
               boxSizing: "border-box",
               overflow: "hidden",
+              color: pastel.texto, // fonte dos cards de questão
             }}
           >
             {painelFiltros}
@@ -1353,7 +1420,7 @@ function App() {
                     {/* Corrige mensagem de resposta correta */}
                     {resposta === (typeof questaoExemplo.correta === "number"
                       ? questaoExemplo.alternativas[questaoExemplo.correta]?.letra
-                      : questaoExemplo.correta) ? (
+                      : questao.correta) ? (
                       <span
                         style={{
                           color: corAcerto,
@@ -1413,14 +1480,15 @@ function App() {
               borderRadius: 8,
               boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
               marginTop: 18,
+              color: pastel.textoTabela, // fonte da tabela
             }}
           >
             <thead>
-              <tr style={{ background: pastel.destaque }}>
-                <th style={{ padding: 10, textAlign: "left" }}>#</th>
-                <th style={{ padding: 10, textAlign: "left" }}>Usuário</th>
-                <th style={{ padding: 10, textAlign: "left" }}>Pontuação</th>
-                <th style={{ padding: 10, textAlign: "left" }}>Nível</th>
+              <tr style={{ background: pastel.destaque, color: pastel.textoTabela }}>
+                <th style={{ padding: 10, textAlign: "left", color: pastel.textoTabela }}>#</th>
+                <th style={{ padding: 10, textAlign: "left", color: pastel.textoTabela }}>Usuário</th>
+                <th style={{ padding: 10, textAlign: "left", color: pastel.textoTabela }}>Pontuação</th>
+                <th style={{ padding: 10, textAlign: "left", color: pastel.textoTabela }}>Nível</th>
               </tr>
             </thead>
             <tbody>
@@ -1429,15 +1497,16 @@ function App() {
                   key={u.email}
                   style={{
                     background: i % 2 === 0 ? pastel.fundo : pastel.branco,
+                    color: pastel.textoTabela,
                   }}
                 >
-                  <td style={{ padding: 10 }}>{i + 1}</td>
-                  <td style={{ padding: 10 }}>
+                  <td style={{ padding: 10, color: pastel.textoTabela }}>{i + 1}</td>
+                  <td style={{ padding: 10, color: pastel.textoTabela }}>
                     {u.email}
                     {u.nome ? ` (${u.nome})` : ""}
                   </td>
-                  <td style={{ padding: 10 }}>{u.pontuacao}</td>
-                  <td style={{ padding: 10 }}>{u.nivel}</td>
+                  <td style={{ padding: 10, color: pastel.textoTabela }}>{u.pontuacao}</td>
+                  <td style={{ padding: 10, color: pastel.textoTabela }}>{u.nivel}</td>
                 </tr>
               ))}
             </tbody>
@@ -1469,6 +1538,7 @@ function App() {
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "flex-start",
+            color: pastel.texto,
           }}
         >
           <div
@@ -1511,32 +1581,47 @@ function App() {
                 {nome?.[0]?.toUpperCase() || "?"}
               </div>
             </div>
-            <div style={{ width: "100%", marginBottom: 24 }}>
-              <label style={{ fontWeight: "bold", fontSize: 18, color: pastel.texto }}>
-                Nome:
+            {/* Nome editável igual ao início */}
+            <div style={{ width: "100%", marginBottom: 18 }}>
+              <div style={{
+                fontWeight: "bold",
+                fontSize: 18,
+                color: pastel.texto,
+                marginBottom: 4,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}>
                 <input
                   type="text"
                   value={nome}
                   maxLength={20}
                   onChange={(e) => setNome(e.target.value)}
-                  onBlur={() => atualizarPerfilBackend(nome, avatarColor)}
+                  onBlur={() => atualizarPerfilBackend(nome, avatarColor, descricao, tema)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      atualizarPerfilBackend(nome, avatarColor);
+                      atualizarPerfilBackend(nome, avatarColor, descricao, tema);
                       e.target.blur();
                     }
                   }}
                   style={{
-                    marginLeft: 10,
-                    padding: 6,
+                    fontWeight: "bold",
+                    fontSize: 18,
+                    color: pastel.texto,
+                    background: "transparent",
+                    border: "1.5px solid #ccc",
                     borderRadius: 6,
-                    border: "1px solid #ccc",
-                    background: pastel.fundo,
-                    fontSize: 16,
+                    padding: "2px 10px",
+                    outline: "none",
+                    width: "auto",
+                    minWidth: 60,
+                    maxWidth: 220,
+                    marginRight: 6,
+                    transition: "border 0.2s",
                   }}
                 />
-              </label>
+              </div>
             </div>
             <div style={{ width: "100%", marginBottom: 24 }}>
               <label style={{ fontWeight: "bold", fontSize: 18, color: pastel.texto }}>
@@ -1546,7 +1631,7 @@ function App() {
                   value={avatarColor}
                   onChange={(e) => {
                     setAvatarColor(e.target.value);
-                    atualizarPerfilBackend(nome, e.target.value);
+                    atualizarPerfilBackend(nome, e.target.value, descricao, tema);
                   }}
                   style={{
                     marginLeft: 10,
@@ -1559,8 +1644,58 @@ function App() {
                 />
               </label>
             </div>
+            {/* Campo de descrição */}
+            <div style={{ width: "100%", marginBottom: 24 }}>
+              <label style={{ fontWeight: "bold", fontSize: 18, color: pastel.texto }}>
+                Descrição:
+                <textarea
+                  value={descricao}
+                  maxLength={200}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  onBlur={() => atualizarPerfilBackend(nome, avatarColor, descricao, tema)}
+                  rows={3}
+                  style={{
+                    marginLeft: 10,
+                    padding: 6,
+                    borderRadius: 6,
+                    border: "1px solid #ccc",
+                    background: pastel.fundo,
+                    fontSize: 16,
+                    width: "90%",
+                    resize: "vertical",
+                    color: pastel.texto,
+                  }}
+                  placeholder="Conte um pouco sobre você..."
+                />
+              </label>
+            </div>
+            {/* Escolha de tema */}
+            <div style={{ width: "100%", marginBottom: 24 }}>
+              <label style={{ fontWeight: "bold", fontSize: 18, color: pastel.texto }}>
+                Tema:
+                <select
+                  value={tema}
+                  onChange={e => {
+                    setTema(e.target.value);
+                    atualizarPerfilBackend(nome, avatarColor, descricao, e.target.value);
+                  }}
+                  style={{
+                    marginLeft: 10,
+                    padding: 6,
+                    borderRadius: 6,
+                    border: "1px solid #ccc",
+                    background: pastel.fundo,
+                    fontSize: 16,
+                    color: pastel.texto,
+                  }}
+                >
+                  <option value="claro">Claro</option>
+                  <option value="escuro">Escuro</option>
+                </select>
+              </label>
+            </div>
             <div style={{ color: pastel.texto, fontSize: 14, marginTop: 8 }}>
-              Personalize seu nome e cor do avatar!
+              Personalize seu nome, cor do avatar, descrição e tema!
             </div>
           </div>
         </div>
@@ -1736,7 +1871,7 @@ function App() {
   };
 
   // Função para atualizar perfil no backend
-  async function atualizarPerfilBackend(nome, avatarColor) {
+  async function atualizarPerfilBackend(nome, avatarColor, descricao, tema) {
     if (!usuario) return;
     try {
       await fetch(`${API_URL}/update-profile`, {
@@ -1746,12 +1881,12 @@ function App() {
           email: usuario.email,
           nome,
           avatarColor,
+          descricao,
+          tema,
         }),
       });
-      // Opcional: atualizar localmente o usuário
-      setUsuario((u) => u ? { ...u, nome, avatarColor } : u);
+      setUsuario((u) => u ? { ...u, nome, avatarColor, descricao, tema } : u);
     } catch (err) {
-      // Silencie erro, só log
       console.error("Erro ao atualizar perfil:", err);
     }
   }
@@ -1765,19 +1900,19 @@ function App() {
         setUsuario(userObj);
         setNome(userObj.nome || "Jogador");
         setAvatarColor(userObj.avatarColor || "#a3a3ff");
+        setDescricao(userObj.descricao || "");
+        setTema(userObj.tema || "claro");
         setPontuacao(userObj.pontuacao || 0);
         setAcertos(userObj.acertos || 0);
         setErros(userObj.erros || 0);
         setNivel(userObj.nivel || 1);
         setXpAtual(userObj.xpAtual || 0);
         setXpMax(userObj.xpMax || 100);
-        // Corrigido: statsPorArea SEMPRE inicializa, mesmo se vazio
         setStatsPorArea(userObj.statsPorArea && typeof userObj.statsPorArea === "object" ? userObj.statsPorArea : {});
         setTela("game");
       } catch {}
     }
   }, []);
-
   // Salvar dados do usuário no localStorage sempre que mudar
   useEffect(() => {
     if (usuario) {
@@ -1785,6 +1920,8 @@ function App() {
         ...usuario,
         nome,
         avatarColor,
+        descricao,
+        tema,
         pontuacao,
         acertos,
         erros,
@@ -1797,7 +1934,7 @@ function App() {
     } else {
       localStorage.removeItem("quiz_usuario");
     }
-  }, [usuario, nome, avatarColor, pontuacao, acertos, erros, nivel, xpAtual, xpMax, statsPorArea]);
+  }, [usuario, nome, avatarColor, descricao, tema, pontuacao, acertos, erros, nivel, xpAtual, xpMax, statsPorArea]);
 
   if (tela === "game") {
     return (
@@ -1949,12 +2086,14 @@ function App() {
         }}
       >
         <div
+
           style={{
             padding: 0,
             borderRadius: 12,
             background: pastel.branco,
             boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
             minWidth: 320,
+           
             textAlign: "center",
             overflow: "hidden",
           }}
@@ -1982,6 +2121,7 @@ function App() {
             >
               QuizENEM
             </span>
+         
           </div>
           <div
             style={{

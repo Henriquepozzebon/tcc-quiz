@@ -191,14 +191,14 @@ app.post("/update-stats", async (req, res) => {
   }
 });
 
-// Atualizar perfil (nome e cor do avatar)
+// Atualizar perfil (nome, cor do avatar, bio, tema)
 app.post("/update-profile", async (req, res) => {
   try {
-    const { email, nome, avatarColor } = req.body;
+    const { email, nome, avatarColor, bio, tema } = req.body;
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const usuario = await User.findOneAndUpdate(
       { email: normalizedEmail },
-      { nome, avatarColor },
+      { nome, avatarColor, bio, tema },
       { new: true }
     );
     if (!usuario)
