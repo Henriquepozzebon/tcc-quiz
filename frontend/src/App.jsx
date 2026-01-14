@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import Timer from "./components/Timer";
 
-// Troque pelo endereço real do seu backend no Render:
-const API_URL = "https://tcc-quiz.onrender.com"; // coloque o endereço correto aqui
+// Certifique-se de que o API_URL está correto
+const API_URL = "https://tcc-quiz.onrender.com"; // Backend publicado
 
 function App() {
   const [isLogin, setIsLogin] = useState(true);
@@ -47,10 +47,17 @@ function App() {
       };
 
   useEffect(() => {
+    // Verifique se a conexão com o backend está funcionando
     fetch(`${API_URL}/`)
       .then((res) => res.text())
-      .then(() => setStatusApi("API conectada!"))
-      .catch(() => setStatusApi("Erro ao conectar com a API"));
+      .then((data) => {
+        console.log("Conexão com o backend:", data); // Deve exibir "API do Quiz funcionando!"
+        setStatusApi("API conectada!");
+      })
+      .catch((err) => {
+        console.error("Erro ao conectar ao backend:", err);
+        setStatusApi("Erro ao conectar com a API");
+      });
   }, []);
 
   // Decide cor da mensagem
@@ -2023,6 +2030,7 @@ function App() {
             position: "fixed",
             top: 0,
             left: 0,
+           
             width: "100vw",
             height: "100vh",
             background: "rgba(0,0,0,0.25)",
