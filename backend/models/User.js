@@ -19,7 +19,7 @@ const UserSchema = new mongoose.Schema(
     xpMax: { type: Number, default: 100 },
     nome: { type: String, default: "Jogador" },
     avatarColor: { type: String, default: "#a3a3ff" },
-    bio: { type: String, default: "" }, // Novo campo biografia
+    descricao: { type: String, default: "" }, // Troque bio por descricao
     tema: { type: String, default: "claro" }, // Novo campo tema
     statsPorArea: { type: Object, default: {} },
   },
