@@ -21,6 +21,14 @@ function App() {
   const [descricao, setDescricao] = useState(""); // Troque bio por descricao
   const [tema, setTema] = useState("claro"); // Novo estado para tema
   const [isLoading, setIsLoading] = useState(false); // Novo estado para controle de loading
+  const [notas, setNotas] = useState([]);
+  const [buscaNota, setBuscaNota] = useState("");
+  const [tagAtiva, setTagAtiva] = useState("Todas");
+  const [showFormNota, setShowFormNota] = useState(false);
+  const [notaEmEdicao, setNotaEmEdicao] = useState(null);
+  const [formNotaTitulo, setFormNotaTitulo] = useState("");
+  const [formNotaConteudo, setFormNotaConteudo] = useState("");
+  const [formNotaTags, setFormNotaTags] = useState("");
 
   // Definição dinâmica das cores do tema
   const pastel = tema === "escuro"
@@ -30,21 +38,33 @@ function App() {
         correto: "#6fdc7a",
         erro: "#ff8c9b",
         destaque: "#23272f",
-        branco: "#2d323c",
+        branco: "#2d323c", // <-- card mais claro no escuro
         texto: "#fff",
         textoTabela: "#fff",
         textoSecundario: "#e3e9f7",
+        inputBg: "#23272f", // novo: fundo input escuro
+        inputBorder: "#555", // novo: borda input escuro
+        inputText: "#fff",   // novo: texto input escuro
+        botaoText: "#fff",   // novo: texto botão escuro
+        botaoBgHover: "#4fa3ff", // novo: hover botão escuro
+        cardShadow: "0 2px 12px rgba(0,0,0,0.25)", // novo: sombra mais forte
       }
     : {
-        fundo: "#e3e9f7",
-        botao: "#7ec6f7",
-        correto: "#6fdc7a",
-        erro: "#ff8c9b",
-        destaque: "#e3e9f7",
-        branco: "#fff",
+        fundo: "#f4f5fb", // fundo geral mais claro, próximo ao layout de referência
+        botao: "#4f9cff", // azul mais forte para botões e destaques
+        correto: "#30c985", // verde mais vivo para acertos
+        erro: "#ff5b7d", // vermelho/rosa mais intenso para erros
+        destaque: "#eef2ff", // faixas e destaques sutis
+        branco: "#ffffff",
         texto: "#1a1a1a",
         textoTabela: "#1a1a1a",
-        textoSecundario: "#888",
+        textoSecundario: "#888888",
+        inputBg: "#f9fbff",
+        inputBorder: "#d0d7f2",
+        inputText: "#222222",
+        botaoText: "#ffffff",
+        botaoBgHover: "#6fb2ff",
+        cardShadow: "0 18px 45px rgba(15,23,42,0.10)",
       };
 
   useEffect(() => {
@@ -134,13 +154,14 @@ function App() {
 
   // Abas simuladas para o menu lateral (removido Configurações)
   const abas = [
-    { id: "inicio", nome: "Início" },
-    { id: "perfil", nome: "Perfil" },
-    { id: "desempenho", nome: "Desempenho" },
-    { id: "questoes", nome: "Questões" },
-    { id: "simulados", nome: "Simulados" },
-    { id: "ranking", nome: "Ranking" },
-    { id: "sair", nome: "Sair" },
+    { id: "inicio", nome: "Início", icone: "🏠" },
+    { id: "perfil", nome: "Perfil", icone: "👤" },
+    { id: "desempenho", nome: "Desempenho", icone: "📊" },
+    { id: "questoes", nome: "Questões", icone: "❓" },
+    { id: "simulados", nome: "Simulados", icone: "📝" },
+    { id: "anotacoes", nome: "Anotações", icone: "🗒️" },
+    { id: "ranking", nome: "Ranking", icone: "🏆" },
+    { id: "sair", nome: "Sair", icone: "↩" },
   ];
 
   // Questões de exemplo
@@ -237,6 +258,7 @@ function App() {
   const [nivel, setNivel] = useState(1);
   const [xpAtual, setXpAtual] = useState(0);
   const [xpMax, setXpMax] = useState(100);
+  const [copiadoEnunciado, setCopiadoEnunciado] = useState(false);
 
   // Timer: reinicia a cada nova questão
   const [timerKey, setTimerKey] = useState(0);
@@ -383,6 +405,41 @@ function App() {
     }
   }, [aba]);
 
+  // Carregar anotações separadas por usuário (localStorage)
+  useEffect(() => {
+    if (!usuario?.email) {
+      setNotas([]);
+      return;
+    }
+    try {
+      const bruto = localStorage.getItem("quiz_anotacoes_by_user");
+      if (!bruto) {
+        setNotas([]);
+        return;
+      }
+      const mapa = JSON.parse(bruto) || {};
+      const doUsuario = Array.isArray(mapa[usuario.email]) ? mapa[usuario.email] : [];
+      setNotas(doUsuario);
+    } catch (e) {
+      console.error("Erro ao carregar anotações do localStorage", e);
+      setNotas([]);
+    }
+  }, [usuario]);
+
+  const atualizarNotas = (novasNotas) => {
+    setNotas(novasNotas);
+    if (!usuario?.email) return;
+    try {
+      const chave = "quiz_anotacoes_by_user";
+      const bruto = localStorage.getItem(chave);
+      const mapa = bruto ? JSON.parse(bruto) || {} : {};
+      mapa[usuario.email] = novasNotas;
+      localStorage.setItem(chave, JSON.stringify(mapa));
+    } catch (e) {
+      console.error("Erro ao salvar anotações no localStorage", e);
+    }
+  };
+
   // Carregar nome, cor, bio, tema e statsPorArea do backend ao logar
   useEffect(() => {
     if (usuario) {
@@ -400,11 +457,6 @@ function App() {
     }
   }, [usuario]);
 
-  // Filtros visuais (checkboxes)
-  const [filtros, setFiltros] = useState({
-    ano: false,
-    materia: false,
-  });
   // Carrega questões do backend ao abrir aba "questoes" ou "simulados"
   const [questoesBanco, setQuestoesBanco] = useState([]);
 
@@ -450,12 +502,12 @@ function App() {
   // Filtra as questões do banco conforme filtros ativos
   const questoesFiltradas = ((questoesBanco && questoesBanco.length > 0) ? questoesBanco : questoesExemplo).filter((q) => {
     // Filtro por ano
-    if (filtros.ano && filtroAno !== "" && String(q.ano) !== filtroAno) return false;
+    if (filtroAno !== "" && String(q.ano) !== filtroAno) return false;
 
     // Filtro por matéria/assunto
     const materia = (q.assunto || q.materia || "").toLowerCase().trim();
     const filtroMateriaLower = (filtroMateria || "").toLowerCase().trim();
-    if (filtros.materia && filtroMateriaLower !== "" && filtroMateriaLower !== "todas") {
+    if (filtroMateriaLower !== "" && filtroMateriaLower !== "todas") {
       if (materia !== filtroMateriaLower) return false;
     }
     return true;
@@ -495,19 +547,19 @@ function App() {
         fraseDestaque = `Gênio de ${capitalize(destaqueArea)} `;
       }
 
-      // Estilo dos cards de estatísticas (usado em cima e embaixo)
+      // Estilo dos cards de estatísticas (linha inferior, estilo dashboard)
       const cardEstatisticaStyle = {
         borderRadius: 16,
-        padding: "36px 48px",
+        padding: "28px 32px",
         minWidth: 0,
         width: "100%",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
         textAlign: "center",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        height: 140,
+        height: 130,
         transition: "background 0.2s, box-shadow 0.2s",
         cursor: "pointer",
         boxSizing: "border-box",
@@ -516,7 +568,7 @@ function App() {
       return (
         <div
           style={{
-            padding: "32px 0",
+            padding: "40px 0 32px 0",
             minHeight: "100vh",
             background: pastel.fundo,
             display: "flex",
@@ -527,18 +579,18 @@ function App() {
           {/* Card de perfil */}
           <div
             style={{
-              width: "80vw",
-              maxWidth: 900,
+              width: "92vw",
+              maxWidth: 1280,
               background: pastel.branco,
-              borderRadius: 18,
-              boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
-              padding: "32px 40px 32px 40px",
+              borderRadius: 24,
+              boxShadow: "0 18px 45px rgba(15,23,42,0.12)",
+              padding: "28px 32px 26px 32px",
               marginBottom: 40, // aumente o espaçamento entre os quadros
               marginTop: 12,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              border: `2.5px solid ${pastel.botao}`, // Adiciona borda azul ao primeiro quadro
+              border: "none",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 28 }}>
@@ -546,23 +598,21 @@ function App() {
                 style={{
                   width: 80,
                   height: 80,
-                  borderRadius: "50%",
-                  border: `3px solid ${pastel.botao}`,
-                  background: avatarColor,
+                  borderRadius: 24,
+                  background: avatarColor || "linear-gradient(140deg, #4b2be8 0%, #8b5cf6 40%, #ec4899 100%)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   fontWeight: "bold",
-                  fontSize: 38,
-                  color: "#fff",
-                  objectFit: "cover",
+                  fontSize: 36,
+                  color: "#ffffff",
                   marginRight: 24,
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+                  boxShadow: "0 8px 22px rgba(15,23,42,0.35)",
                 }}
               >
                 {nome?.[0]?.toUpperCase() || "?"}
               </div>
-              <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ flex: 1, minWidth: 220 }}>
                 {/* Nome editável */}
                 <div
                   style={{
@@ -594,9 +644,9 @@ function App() {
                       fontSize: 28,
                       color: pastel.texto,
                       background: "transparent",
-                      border: "1.5px solid #ccc",
-                      borderRadius: 6,
-                      padding: "2px 10px",
+                      border: "none",
+                      borderRadius: 4,
+                      padding: 0,
                       outline: "none",
                       width: "auto",
                       minWidth: 60,
@@ -625,118 +675,91 @@ function App() {
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
-                    marginBottom: 6,
+                    marginBottom: 10,
                   }}
                 >
                   <span
                     style={{
-                      fontSize: 18,
-                      color: pastel.botao,
-                      fontWeight: "bold",
-                      marginRight: 4,
+                      fontSize: 14,
+                      color: "#8c8fa5",
+                      fontWeight: 500,
                     }}
                   >
                     Nível {nivel}
                   </span>
-                  {/* Estrelinha removida daqui */}
                 </div>
-                {/* Barra de nível maior e estilizada */}
+                {/* Barra de nível mais fina, ocupando toda largura do card */}
                 <div
                   style={{
-                    width: "80vw",
-                    maxWidth: 600,
-                    marginTop: 10,
+                    width: "100%",
+                    maxWidth: "100%",
+                    marginTop: 4,
                     marginBottom: 0,
-                    background: pastel.fundo,
-                    borderRadius: 16,
-                    height: 44,
-                    position: "relative",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                    border: `2.5px solid ${pastel.botao}`,
-                    overflow: "hidden",
                     display: "flex",
                     alignItems: "center",
+                    gap: 12,
                   }}
                 >
+                  {/* Barra de progresso do nível */}
                   <div
                     style={{
-                      width: `${nivelPercent}%`,
-                      height: "100%",
-                      background: `linear-gradient(90deg, ${pastel.botao} 60%, ${pastel.correto} 100%)`,
-                      borderRadius: 16,
-                      transition: "width 0.4s",
+                      flex: 1,
+                      background: "#eef1ff",
+                      borderRadius: 999,
+                      height: 10,
+                      position: "relative",
+                      boxShadow: "none",
+                      border: "none",
+                      overflow: "hidden",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: nivelPercent > 10 ? "flex-end" : "flex-start",
-                      boxShadow: nivelPercent > 0 ? "0 2px 8px rgba(144,238,144,0.12)" : "none",
                     }}
                   >
-                    {/* XP atual dentro da barra se houver espaço */}
-                    {nivelPercent > 20 && (
-                      <span
-                        style={{
-                          color: pastel.texto,
-                          fontWeight: "bold",
-                          fontSize: 18,
-                          marginRight: 22,
-                          textShadow: "0 1px 2px #fff8",
-                        }}
-                      >
-                        {xpAtual}/{xpMax} XP
-                      </span>
-                    )}
-                  </div>
-                  {/* XP atual fora da barra se pouco preenchida */}
-                  {nivelPercent <= 20 && (
-                    <span
+                    <div
                       style={{
-                        position: "absolute",
-                        left: 22,
-                        color: pastel.texto,
-                        fontWeight: "bold",
-                        fontSize: 18,
-                        textShadow: "0 1px 2px #fff8",
+                        width: `${nivelPercent}%`,
+                        height: "100%",
+                        background:
+                          "linear-gradient(90deg, #4b2be8 0%, #44c2ff 45%, #25e0c1 100%)",
+                        borderRadius: 999,
+                        transition: "width 0.35s ease-out",
+                        boxShadow:
+                          nivelPercent > 0
+                            ? "0 2px 8px rgba(144,238,144,0.12)"
+                            : "none",
                       }}
-                    >
-                      {xpAtual}/{xpMax} XP
-                    </span>
-                  )}
-                  {/* Nível à direita da barra */}
+                    />
+                  </div>
+                  {/* XP numérico ao lado direito da barra, como no layout de referência */}
                   <span
                     style={{
-                      position: "absolute",
-                      right: 22,
-                      color: pastel.botao,
-                      fontWeight: "bold",
-                      fontSize: 20,
-                      textShadow: "0 1px 2px #fff8",
-                      letterSpacing: 1,
+                      minWidth: 90,
+                      textAlign: "right",
+                      color: "#8c8fa5",
+                      fontWeight: 500,
+                      fontSize: 13,
                     }}
                   >
-                    Nível {nivel}
+                    {xpAtual}/{xpMax} XP
                   </span>
                 </div>
               </div>
             </div>
-            {/* Frase de destaque com estrelinha, aparece abaixo do card de perfil */}
+            {/* Frase de destaque com estrelinha, abaixo do nome, alinhada à esquerda */}
             {fraseDestaque && (
               <div
                 style={{
-                  marginTop: 18,
-                  fontSize: 20,
-                  color: pastel.botao,
-                  fontWeight: "bold",
-                  textAlign: "center",
+                  marginTop: 16,
+                  fontSize: 14,
+                  color: "#f2a63a",
+                  fontWeight: 500,
+                  textAlign: "left",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  cursor: "pointer",
-                  transition: "color 0.2s",
+                  gap: 6,
+                  cursor: "default",
                 }}
                 title={`Você se destaca em ${capitalize(destaqueArea)}!`}
-                onMouseEnter={e => e.currentTarget.style.color = pastel.correto}
-                onMouseLeave={e => e.currentTarget.style.color = pastel.botao}
               >
                 <span>★</span>
                 <span>{fraseDestaque}</span>
@@ -746,26 +769,42 @@ function App() {
           {/* Mensagem de boas-vindas - quadro branco com borda azul pastel */}
           <div
             style={{
-              width: "80vw",
-              maxWidth: 900,
+              width: "92vw",
+              maxWidth: 1280,
               background: pastel.branco,
               borderRadius: 16,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              border: `2.5px solid ${pastel.botao}`,
-              padding: "24px 32px",
+              boxShadow: "0 18px 45px rgba(15,23,42,0.12)",
+              border: "none",
+              padding: "24px 32px 26px 32px",
               marginBottom: 40, // aumente o espaçamento entre os quadros
               textAlign: "center",
               transition: "background 0.2s, box-shadow 0.2s",
             }}
           >
-            <h1 style={{
-              color: pastel.botao,
-              fontWeight: "bold",
-              fontSize: 32,
-              margin: 0,
-              letterSpacing: 1,
-            }}>
-              Bem-vindo ao <span style={{ color: pastel.correto }}>QuizENEM</span>!
+            {/* Barra gradiente dentro do card, como no layout de referência */}
+            <div
+              style={{
+                width: "100%",
+                height: 18,
+                borderRadius: 999,
+                marginBottom: 18,
+                background:
+                  "linear-gradient(90deg, #4b2be8 0%, #44c2ff 45%, #25e0c1 100%)",
+              }}
+            />
+            <h1
+              style={{
+                fontWeight: "bold",
+                fontSize: 26,
+                margin: 0,
+                letterSpacing: 0.5,
+                background:
+                  "linear-gradient(90deg, #4b2be8 0%, #22c55e 50%, #0ea5e9 100%)",
+                WebkitBackgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              Bem-vindo ao QuizENEM!
             </h1>
             <div style={{
               fontSize: 20,
@@ -774,26 +813,45 @@ function App() {
               marginBottom: 0,
               fontWeight: 500,
             }}>
-              Seu banco de questões do ENEM.<br />
-              {/* Frase "Bons estudos e boa sorte!" em verde igual ao pastel.correto */}
-              <span style={{ color: pastel.correto, fontWeight: "bold" }}>Bons estudos e boa sorte!</span>
+              Seu banco de questões do ENEM.
+            </div>
+            <div
+              style={{
+                fontSize: 18,
+                marginTop: 4,
+                color: pastel.correto,
+                fontWeight: 600,
+              }}
+            >
+              Bons estudos e boa sorte!
             </div>
           </div>
-          {/* Cards de estatísticas */}
+          {/* Cards de estatísticas em um card branco alinhado com os demais */}
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gridTemplateRows: "1fr",
-              gap: 32,
-              width: "80vw",
-              maxWidth: 900,
-              minHeight: 180,
-              alignItems: "stretch",
-              justifyItems: "stretch",
-              marginBottom: 24, // adiciona espaçamento inferior
+              width: "92vw",
+              maxWidth: 1280,
+              background: pastel.branco,
+              borderRadius: 16,
+              boxShadow: "0 18px 45px rgba(15,23,42,0.12)",
+              padding: "24px 32px 26px 32px",
+              marginBottom: 32,
+              boxSizing: "border-box",
             }}
           >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gridTemplateRows: "1fr",
+                gap: 28,
+                minHeight: 160,
+                alignItems: "stretch",
+                justifyItems: "stretch",
+                width: "100%",
+                boxSizing: "border-box",
+              }}
+            >
             {/* Pontuação Total */}
             <div
               style={{
@@ -811,15 +869,40 @@ function App() {
             >
               <div
                 style={{
-                  fontSize: 38,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "#e5f6ff",
+                  marginBottom: 6,
+                }}
+              >
+                Pontuação Total
+              </div>
+              <div
+                style={{
+                  fontSize: 32,
                   fontWeight: "bold",
-                  color: pastel.texto,
-                  marginBottom: 8,
+                  color: "#ffffff",
+                  marginBottom: 6,
                 }}
               >
                 {pontuacao}
               </div>
-              <div style={{ fontSize: 18, color: pastel.texto }}>Pontuação Total</div>
+              <div
+                style={{
+                  marginTop: 4,
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "2px solid rgba(255,255,255,0.7)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#ffffff",
+                  fontSize: 18,
+                }}
+              >
+                ⚡
+              </div>
             </div>
             {/* Acertos */}
             <div
@@ -838,15 +921,40 @@ function App() {
             >
               <div
                 style={{
-                  fontSize: 38,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "#e5ffe9",
+                  marginBottom: 6,
+                }}
+              >
+                Acertos
+              </div>
+              <div
+                style={{
+                  fontSize: 32,
                   fontWeight: "bold",
-                  color: pastel.texto,
-                  marginBottom: 8,
+                  color: "#ffffff",
+                  marginBottom: 6,
                 }}
               >
                 {probAcerto}%
               </div>
-              <div style={{ fontSize: 18, color: pastel.texto }}>Acertos</div>
+              <div
+                style={{
+                  marginTop: 4,
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "2px solid rgba(255,255,255,0.7)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#ffffff",
+                  fontSize: 18,
+                }}
+              >
+                🎯
+              </div>
             </div>
             {/* Erros */}
             <div
@@ -865,16 +973,516 @@ function App() {
             >
               <div
                 style={{
-                  fontSize: 38,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "#ffe5ea",
+                  marginBottom: 6,
+                }}
+              >
+                Erros
+              </div>
+              <div
+                style={{
+                  fontSize: 32,
                   fontWeight: "bold",
-                  color: pastel.texto,
-                  marginBottom: 8,
+                  color: "#ffffff",
+                  marginBottom: 6,
                 }}
               >
                 {probErro}%
               </div>
-              <div style={{ fontSize: 18, color: pastel.texto }}>Erros</div>
+              <div
+                style={{
+                  marginTop: 4,
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  border: "2px solid rgba(255,255,255,0.7)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#ffffff",
+                  fontSize: 18,
+                }}
+              >
+                ✖
+              </div>
             </div>
+              </div>
+          </div>
+        </div>
+      );
+    }
+    if (aba === "anotacoes") {
+      const coresNotas = [
+        "#eef2ff",
+        "#fef9c3",
+        "#dcfce7",
+        "#e0f2fe",
+        "#fee2e2",
+      ];
+
+      const todasTags = Array.from(
+        new Set(
+          notas.flatMap((n) => (Array.isArray(n.tags) ? n.tags : [])).filter(
+            (t) => t && typeof t === "string"
+          )
+        )
+      );
+
+      const notasOrdenadas = [...notas].sort((a, b) => {
+        if (a.fixada && !b.fixada) return -1;
+        if (!a.fixada && b.fixada) return 1;
+        return (b.criadaEm || 0) - (a.criadaEm || 0);
+      });
+
+      const notasFiltradas = notasOrdenadas.filter((n) => {
+        const texto = `${n.titulo || ""} ${n.conteudo || ""}`.toLowerCase();
+        const buscaOk = !buscaNota
+          ? true
+          : texto.includes(buscaNota.toLowerCase());
+        const tagOk =
+          tagAtiva === "Todas" ||
+          (Array.isArray(n.tags) && n.tags.includes(tagAtiva));
+        return buscaOk && tagOk;
+      });
+
+      const abrirFormNovaNota = () => {
+        setNotaEmEdicao(null);
+        setFormNotaTitulo("");
+        setFormNotaConteudo("");
+        setFormNotaTags("");
+        setShowFormNota(true);
+      };
+
+      const abrirFormEditarNota = (nota) => {
+        setNotaEmEdicao(nota);
+        setFormNotaTitulo(nota.titulo || "");
+        setFormNotaConteudo(nota.conteudo || "");
+        setFormNotaTags((nota.tags || []).join(", "));
+        setShowFormNota(true);
+      };
+
+      const salvarNotaFormulario = () => {
+        if (!formNotaTitulo.trim()) return;
+        const tags = formNotaTags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+        if (notaEmEdicao) {
+          const atualizadas = notas.map((n) =>
+            n.id === notaEmEdicao.id
+              ? { ...n, titulo: formNotaTitulo, conteudo: formNotaConteudo, tags }
+              : n
+          );
+          atualizarNotas(atualizadas);
+        } else {
+          const nova = {
+            id: Date.now(),
+            titulo: formNotaTitulo,
+            conteudo: formNotaConteudo,
+            tags,
+            fixada: false,
+            cor: coresNotas[Math.floor(Math.random() * coresNotas.length)],
+            criadaEm: Date.now(),
+          };
+          atualizarNotas([...notas, nova]);
+        }
+
+        setShowFormNota(false);
+        setNotaEmEdicao(null);
+        setFormNotaTitulo("");
+        setFormNotaConteudo("");
+        setFormNotaTags("");
+      };
+
+      const excluirNota = (id) => {
+        if (!window.confirm("Excluir esta anotação?")) return;
+        atualizarNotas(notas.filter((n) => n.id !== id));
+      };
+
+      const alternarFixada = (nota) => {
+        const atualizadas = notas.map((n) =>
+          n.id === nota.id ? { ...n, fixada: !n.fixada } : n
+        );
+        atualizarNotas(atualizadas);
+      };
+
+      const formatarData = (ts) => {
+        if (!ts) return "";
+        const d = new Date(ts);
+        return d.toLocaleDateString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+      };
+
+      return (
+        <div
+          style={{
+            padding: "24px 40px 32px 40px",
+            minHeight: "100vh",
+            boxSizing: "border-box",
+          }}
+        >
+          {/* Cabeçalho */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 24,
+            }}
+          >
+            <div>
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: 26,
+                  color: pastel.texto,
+                }}
+              >
+                Anotações
+              </h1>
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 15,
+                  color: pastel.textoSecundario,
+                }}
+              >
+                Organize seus resumos e fórmulas.
+              </div>
+            </div>
+            <button
+              onClick={abrirFormNovaNota}
+              style={{
+                background:
+                  "linear-gradient(135deg, #4f46e5, #6366f1)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: 999,
+                padding: "10px 20px",
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: "pointer",
+                boxShadow: "0 8px 24px rgba(15,23,42,0.35)",
+              }}
+            >
+              + Nova Anotação
+            </button>
+          </div>
+
+          {/* Formulário de nova/edição de anotação */}
+          {showFormNota && (
+            <div
+              style={{
+                marginBottom: 18,
+                maxWidth: 900,
+                background: pastel.branco,
+                borderRadius: 16,
+                boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
+                padding: "18px 20px 16px 20px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 15,
+                    color: pastel.texto,
+                  }}
+                >
+                  {notaEmEdicao ? "Editar anotação" : "Nova anotação"}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Título"
+                  value={formNotaTitulo}
+                  onChange={(e) => setFormNotaTitulo(e.target.value)}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: `1px solid ${pastel.inputBorder}`,
+                    background: pastel.inputBg,
+                    color: pastel.inputText,
+                    fontSize: 14,
+                    outline: "none",
+                  }}
+                />
+                <textarea
+                  rows={3}
+                  placeholder="Conteúdo da anotação"
+                  value={formNotaConteudo}
+                  onChange={(e) => setFormNotaConteudo(e.target.value)}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: `1px solid ${pastel.inputBorder}`,
+                    background: pastel.inputBg,
+                    color: pastel.inputText,
+                    fontSize: 14,
+                    outline: "none",
+                    resize: "vertical",
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Tags separadas por vírgula (ex: Matemática,Física)"
+                  value={formNotaTags}
+                  onChange={(e) => setFormNotaTags(e.target.value)}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: `1px solid ${pastel.inputBorder}`,
+                    background: pastel.inputBg,
+                    color: pastel.inputText,
+                    fontSize: 13,
+                    outline: "none",
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 8,
+                  marginTop: 10,
+                }}
+              >
+                <button
+                  onClick={() => {
+                    setShowFormNota(false);
+                    setNotaEmEdicao(null);
+                  }}
+                  style={{
+                    borderRadius: 999,
+                    padding: "6px 14px",
+                    border: `1px solid ${pastel.inputBorder}`,
+                    background: pastel.branco,
+                    color: pastel.texto,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={salvarNotaFormulario}
+                  style={{
+                    borderRadius: 999,
+                    padding: "6px 18px",
+                    border: "none",
+                    background:
+                      "linear-gradient(135deg, #4f46e5, #6366f1)",
+                    color: "#ffffff",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Salvar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Busca */}
+          <div
+            style={{
+              marginBottom: 18,
+              maxWidth: 520,
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Buscar anotações..."
+              value={buscaNota}
+              onChange={(e) => setBuscaNota(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: 999,
+                border: `1px solid ${pastel.inputBorder}`,
+                background: pastel.inputBg,
+                color: pastel.inputText,
+                outline: "none",
+                fontSize: 14,
+              }}
+            />
+          </div>
+
+          {/* Filtros por tag */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              marginBottom: 22,
+            }}
+          >
+            <button
+              onClick={() => setTagAtiva("Todas")}
+              style={{
+                borderRadius: 999,
+                padding: "6px 14px",
+                border:
+                  tagAtiva === "Todas"
+                    ? "none"
+                    : `1px solid ${pastel.inputBorder}`,
+                backgroundColor:
+                  tagAtiva === "Todas" ? pastel.botao : pastel.branco,
+                color: tagAtiva === "Todas" ? "#fff" : pastel.texto,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Todas
+            </button>
+            {todasTags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setTagAtiva(tag)}
+                style={{
+                  borderRadius: 999,
+                  padding: "6px 14px",
+                  border:
+                    tagAtiva === tag
+                      ? "none"
+                      : `1px solid ${pastel.inputBorder}`,
+                  backgroundColor:
+                    tagAtiva === tag ? pastel.botao : pastel.branco,
+                  color: tagAtiva === tag ? "#fff" : pastel.texto,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+
+          {/* Grid de anotações */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 18,
+            }}
+          >
+            {notasFiltradas.map((nota) => (
+              <div
+                key={nota.id}
+                style={{
+                  background: nota.cor || "#ffffff",
+                  borderRadius: 16,
+                  padding: "18px 18px 14px 18px",
+                  boxShadow: "0 8px 18px rgba(15,23,42,0.10)",
+                  border: nota.fixada
+                    ? `2px solid ${pastel.botao}`
+                    : "1px solid rgba(148,163,184,0.35)",
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 170,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    marginBottom: 6,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 15,
+                      color: pastel.texto,
+                    }}
+                  >
+                    {nota.titulo}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      fontSize: 14,
+                      color: "#6b7280",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span onClick={() => alternarFixada(nota)}>
+                      {nota.fixada ? "📌" : "📍"}
+                    </span>
+                    <span onClick={() => abrirFormEditarNota(nota)}>✏️</span>
+                    <span onClick={() => excluirNota(nota.id)}>🗑️</span>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    flex: 1,
+                    fontSize: 14,
+                    color: pastel.texto,
+                    whiteSpace: "pre-line",
+                    marginBottom: 10,
+                  }}
+                >
+                  {nota.conteudo}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginTop: 4,
+                    fontSize: 12,
+                    color: pastel.textoSecundario,
+                  }}
+                >
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {(nota.tags || []).map((tag) => (
+                      <span
+                        key={tag}
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 999,
+                          background: "rgba(15,23,42,0.04)",
+                          fontSize: 11,
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <span>{formatarData(nota.criadaEm)}</span>
+                </div>
+              </div>
+            ))}
+            {notasFiltradas.length === 0 && (
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  textAlign: "center",
+                  color: pastel.textoSecundario,
+                  fontSize: 14,
+                  paddingTop: 40,
+                }}
+              >
+                Nenhuma anotação ainda. Clique em "Nova Anotação" para começar.
+              </div>
+            )}
           </div>
         </div>
       );
@@ -906,21 +1514,19 @@ function App() {
         ...materias.map(m => ({ id: m, nome: capitalize(m) }))
       ];
 
-      // Novo estilo dos cards de desempenho
+      // Estilo dos cards de desempenho (igual ao layout de referência)
       const cardDesempenhoStyle = {
         borderRadius: 18,
         background: pastel.branco,
-        boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
-        border: `2.5px solid ${pastel.botao}`,
-        padding: "28px 36px",
-        marginBottom: 32,
+        boxShadow: "0 14px 30px rgba(15,23,42,0.10)",
+        padding: "18px 26px 22px 26px",
+        marginBottom: 18,
         width: "100%",
-        maxWidth: 700,
+        maxWidth: 1000,
         display: "flex",
         flexDirection: "column",
         alignItems: "flex-start",
-        margin: "0 auto 32px auto",
-        transition: "box-shadow 0.2s, border 0.2s",
+        boxSizing: "border-box",
       };
 
       // Barra customizada
@@ -932,81 +1538,65 @@ function App() {
         else if (areaId === "linguagens") corBarra = "#7ec6f7";
         else if (areaId === "humanas") corBarra = "#87ceeb";
 
-        // cor de fundo barra
-        let corFundoBarra = pastel.fundo;
-        if (areaId === "geral") corFundoBarra = pastel.fundo;
-
         return (
-          <div style={{ ...cardDesempenhoStyle, marginBottom: 28 }}>
-            <div style={{
-              fontWeight: "bold",
-              fontSize: 24,
-              color: pastel.botao,
-              marginBottom: 10,
-              letterSpacing: 0.5,
-            }}>
-              {nome}
-            </div>
-            <div style={{
-              width: "100%",
-              marginBottom: 12,
-              fontSize: 16,
-              color: pastel.texto,
-              fontWeight: 500,
-            }}>
-              Aproveitamento: <b>{stats.aproveitamento}%</b> &nbsp;|&nbsp; Respondidas: {stats.totalRespondidas}
-            </div>
-            <div style={{
-              width: "100%",
-              height: 38,
-              background: corFundoBarra,
-              borderRadius: 14,
-              position: "relative",
-              overflow: "hidden",
-              border: `2px solid ${pastel.botao}`,
-              marginBottom: 0,
-              marginTop: 2,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-              display: "flex",
-              alignItems: "center",
-            }}>
-              <div style={{
-                width: `${stats.aproveitamento}%`,
-                height: "100%",
-                background: `linear-gradient(90deg, ${corBarra} 70%, ${pastel.botao} 100%)`,
-                borderRadius: 14,
-                transition: "width 0.4s",
+          <div style={cardDesempenhoStyle}>
+            <div
+              style={{
+                width: "100%",
                 display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
-                justifyContent: stats.aproveitamento > 10 ? "flex-end" : "flex-start",
-                boxShadow: stats.aproveitamento > 0 ? "0 2px 8px rgba(144,238,144,0.10)" : "none",
-              }}>
-                {/* Valor dentro da barra se houver espaço */}
-                {stats.aproveitamento > 20 && (
-                  <span style={{
+                marginBottom: 10,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 16,
                     color: pastel.texto,
-                    fontWeight: "bold",
-                    fontSize: 18,
-                    marginRight: 18,
-                    textShadow: "0 1px 2px #fff8",
-                  }}>
-                    {stats.aproveitamento}%
-                  </span>
-                )}
+                    marginBottom: 2,
+                  }}
+                >
+                  {nome}
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "#6b7280",
+                  }}
+                >
+                  Aproveitamento: <b>{stats.aproveitamento}%</b>
+                </div>
               </div>
-              {/* Valor fora da barra se pouco preenchida */}
-              {stats.aproveitamento <= 20 && (
-                <span style={{
-                  position: "absolute",
-                  left: 18,
-                  color: pastel.texto,
-                  fontWeight: "bold",
-                  fontSize: 18,
-                  textShadow: "0 1px 2px #fff8",
-                }}>
-                  {stats.aproveitamento}%
-                </span>
-              )}
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#6b7280",
+                  fontWeight: 500,
+                }}
+              >
+                Respondidas: {stats.totalRespondidas}
+              </div>
+            </div>
+            <div
+              style={{
+                width: "100%",
+                height: 10,
+                borderRadius: 999,
+                background: "#e5e7eb",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${stats.aproveitamento}%`,
+                  height: "100%",
+                  borderRadius: 999,
+                  background: corBarra,
+                  transition: "width 0.35s ease-out",
+                }}
+              />
             </div>
           </div>
         );
@@ -1023,69 +1613,42 @@ function App() {
             alignItems: "center",
           }}
         >
-          <div style={{
-            width: "100%",
-            maxWidth: 900,
-            background: pastel.fundo,
-            borderRadius: 18,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
-            padding: "32px 40px",
-            marginBottom: 32,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            border: `2.5px solid ${pastel.botao}`,
-          }}>
-            <h2 style={{
-              color: pastel.botao,
-              marginBottom: 32,
-              fontWeight: "bold",
-              fontSize: 32,
-              letterSpacing: 1,
-            }}>
-              Desempenho Geral e por Área
-            </h2>
-            <div style={{
-              width: "100%",
+          {/* Barra gradiente no topo, como na tela de referência */}
+          <div
+            style={{
+              width: "92vw",
+              maxWidth: 1100,
+              height: 18,
+              borderRadius: 999,
+              marginBottom: 28,
+              background:
+                "linear-gradient(90deg, #4b2be8 0%, #44c2ff 45%, #25e0c1 100%)",
+            }}
+          />
+
+          {/* Lista de cards de desempenho */}
+          <div
+            style={{
+              width: "92vw",
+              maxWidth: 1100,
               display: "flex",
               flexDirection: "column",
-              gap: 0,
+              gap: 16,
               alignItems: "center",
-            }}>
-              {areas.map(area => (
-                <BarraArea key={area.id} areaId={area.id} nome={area.nome} />
-              ))}
-            </div>
-            <div
-              style={{
-                marginTop: 32,
-                background: pastel.fundo,
-                borderRadius: 12,
-                padding: 24,
-                textAlign: "center",
-                width: "100%",
-                maxWidth: 700,
-                fontWeight: "bold",
-                fontSize: 18,
-                color: pastel.texto,
-                border: `2px solid ${pastel.botao}`,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-              }}
-            >
-              <span>Resumo Geral</span>
-              <div style={{ marginTop: 10, fontWeight: 500 }}>
-                <b>Acertos:</b> {acertos} &nbsp;|&nbsp; <b>Erros:</b> {erros}{" "}
-                &nbsp;|&nbsp; <b>Aproveitamento:</b> {(acertos + erros) > 0 ? Math.round((acertos / (acertos + erros)) * 100) : 0}%
-              </div>
-            </div>
+            }}
+          >
+            {areas.map((area) => (
+              <BarraArea key={area.id} areaId={area.id} nome={area.nome} />
+            ))}
           </div>
         </div>
       );
     }
     if (aba === "questoes") {
       const questaoExemplo = questoesFiltradas[indiceQuestao];
-      const corAcerto = pastel.correto;
-      const corErro = pastel.erro;
+      // Paleta principal usada na tela de questões
+      const corAcerto = pastel.correto; // verde vivo
+      const corErro = "#f472b6"; // rosa mais suave para bordas de erro
       const corPadrao = pastel.fundo;
 
       // Descobre o índice correto da alternativa
@@ -1097,113 +1660,147 @@ function App() {
             ))
         : -1;
 
-      // Painel de filtros sempre aparece
+      // Painel de filtros com visual parecido com o layout de referência
       const painelFiltros = (
         <div
           style={{
             width: "100%",
             maxWidth: "100%",
             marginBottom: 24,
-            background: pastel.destaque,
-            borderRadius: 10,
-            padding: "18px 24px",
+            background: "#f9fafb",
+            borderRadius: 999,
+            padding: "10px 18px",
             boxSizing: "border-box",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+            boxShadow: "0 2px 10px rgba(15,23,42,0.04)",
             display: "flex",
             flexWrap: "wrap",
-            gap: 24,
+            gap: 16,
             alignItems: "center",
-            overflow: "auto",
           }}
         >
-          <span style={{ fontWeight: "bold", fontSize: 18, marginRight: 12 }}>
+          <span style={{ fontWeight: "bold", fontSize: 16, marginRight: 8 }}>
             Filtros:
           </span>
-          {/* Checkbox para Ano */}
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={filtros.ano}
-              onChange={(e) =>
-                setFiltros((f) => ({ ...f, ano: e.target.checked }))
-              }
-            />
-            Ano
-            {filtros.ano && (
-              <select
-                value={filtroAno}
-                onChange={(e) => setFiltroAno(e.target.value)}
-                style={{ marginLeft: 8, padding: 4, borderRadius: 6 }}
-              >
-                <option value="">Todos</option>
-                {anos.map((ano) => (
-                  <option key={ano} value={String(ano)}>
-                    {ano}
-                  </option>
-                ))}
-              </select>
-            )}
-          </label>
-          {/* Checkbox para Matéria */}
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={filtros.materia}
-              onChange={(e) =>
-                setFiltros((f) => ({ ...f, materia: e.target.checked }))
-              }
-            />
-            Matéria
-            {filtros.materia && (
-              <select
-                value={filtroMateria}
-                onChange={(e) => setFiltroMateria(e.target.value)}
-                style={{ marginLeft: 8, padding: 4, borderRadius: 6 }}
-              >
-                <option value="todas">Todas</option>
-                {materias.map((m) => (
-                  <option key={m} value={m}>
-                    {capitalize(m)}
-                  </option>
-                ))}
-              </select>
-            )}
-          </label>
+          {/* Filtro Ano */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: "#ffffff",
+              border: "1.5px solid #c4b5fd",
+            }}
+          >
+            <span style={{ fontSize: 14, color: "#4b5563", fontWeight: 500 }}>
+              Ano
+            </span>
+            <select
+              value={filtroAno}
+              onChange={(e) => setFiltroAno(e.target.value)}
+              disabled={!!resposta}
+              style={{
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                fontSize: 14,
+                fontWeight: 600,
+                color: "#4f46e5",
+                cursor: resposta ? "not-allowed" : "pointer",
+                opacity: resposta ? 0.6 : 1,
+              }}
+            >
+              <option value="">Todos</option>
+              {anos.map((ano) => (
+                <option key={ano} value={String(ano)}>
+                  {ano}
+                </option>
+              ))}
+            </select>
+          </div>
+          {/* Filtro Matéria */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: "#ffffff",
+              border: "1.5px solid #e5e7eb",
+            }}
+          >
+            <span style={{ fontSize: 14, color: "#4b5563", fontWeight: 500 }}>
+              Matéria
+            </span>
+            <select
+              value={filtroMateria}
+              onChange={(e) => setFiltroMateria(e.target.value)}
+              disabled={!!resposta}
+              style={{
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                fontSize: 14,
+                fontWeight: 600,
+                color: "#4b5563",
+                cursor: resposta ? "not-allowed" : "pointer",
+                opacity: resposta ? 0.6 : 1,
+              }}
+            >
+              <option value="todas">Todas</option>
+              {materias.map((m) => (
+                <option key={m} value={m}>
+                  {capitalize(m)}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       );
 
       return (
         <div
           style={{
-            padding: "3vw 0",
+            padding: "32px 0",
             width: "100%",
             minHeight: "100vh",
             background: pastel.fundo,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            color: pastel.texto, // fonte principal das questões
+            color: pastel.texto,
           }}
         >
+          {/* Barra gradiente no topo, como no layout de referência */}
           <div
             style={{
-              width: "96%",
-              maxWidth: "1200px",
-              minWidth: "320px",
+              width: "96vw",
+              maxWidth: 1180,
+              height: 18,
+              borderRadius: 999,
+              marginBottom: 24,
+              background:
+                "linear-gradient(90deg, #4b2be8 0%, #44c2ff 45%, #25e0c1 100%)",
+            }}
+          />
+
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 1180,
+              minWidth: 320,
+              padding: "24px 30px 28px 30px",
+              marginBottom: 24,
               background: pastel.branco,
-              borderRadius: 20,
-              boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
-              border: `3px solid ${pastel.botao}`,
-              padding: "2.5vw 3vw",
-              margin: "0 auto",
-              marginTop: "1vw",
-              marginBottom: "2vw",
+              borderRadius: 24,
+              boxShadow: pastel.cardShadow,
               display: "flex",
               flexDirection: "column",
-              alignItems: "flex-start",
+              // Garante que o conteúdo interno use toda a largura disponível
+              alignItems: "stretch",
               boxSizing: "border-box",
-              overflow: "hidden",
-              color: pastel.texto, // fonte dos cards de questão
             }}
           >
             {painelFiltros}
@@ -1225,15 +1822,49 @@ function App() {
                     alignItems: "center",
                   }}
                 >
-                  <div>
-                    {/* Ajuste aqui: ENEM/ANO/assunto */}
-                    <b>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {/* Tag ENEM/Ano no estilo do layout de referência */}
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        background: "#eef2ff",
+                        color: "#3730a3",
+                        border: "1px solid #c4b5fd",
+                      }}
+                    >
                       ENEM/{questoesFiltradas[indiceQuestao]?.ano}
-                      {questoesFiltradas[indiceQuestao]?.materia || questoesFiltradas[indiceQuestao]?.assunto
-                        ? `/${capitalize(questoesFiltradas[indiceQuestao]?.materia || questoesFiltradas[indiceQuestao]?.assunto)}`
-                        : ""}
-                    </b>
-                    {/* Se quiser mostrar banca e prova, pode adicionar depois */}
+                    </span>
+                    {/* Tag de matéria/assunto */}
+                    {(questoesFiltradas[indiceQuestao]?.materia ||
+                      questoesFiltradas[indiceQuestao]?.assunto) && (
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          background: "#f3f4f6",
+                          color: "#374151",
+                        }}
+                      >
+                        {capitalize(
+                          (questoesFiltradas[indiceQuestao]?.materia ||
+                            questoesFiltradas[indiceQuestao]?.assunto ||
+                            ""
+                          ).toLowerCase()
+                        )}
+                      </span>
+                    )}
                   </div>
                   {/* Timer só aparece se ainda não respondeu */}
                   {!resposta && (
@@ -1242,77 +1873,60 @@ function App() {
                 </div>
                 <div
                   style={{
-                    fontSize: 24,
-                    marginBottom: 28,
-                    fontWeight: "bold",
+                    fontSize: 16,
+                    marginBottom: 24,
+                    fontWeight: 500,
+                    lineHeight: 1.7,
                     color: pastel.texto,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
                     width: "100%",
+                    // Usa toda a largura disponível, sem quebrar em linhas curtas
+                    whiteSpace: "normal",
+                    // Disposição semelhante ao layout de referência
+                    textAlign: "left",
                   }}
                 >
-                  <span>{questoesFiltradas[indiceQuestao]?.enunciado}</span>
-                  {resposta && (
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(
-                          questoesFiltradas[indiceQuestao]?.enunciado
-                        );
-                      }}
-                      style={{
-                        marginLeft: 18,
-                        background: pastel.botao,
-                        color: pastel.texto,
-                        border: "none",
-                        borderRadius: 8,
-                        padding: "8px 18px",
-                        fontWeight: "bold",
-                        fontSize: 16,
-                        cursor: "pointer",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                        transition: "background 0.2s",
-                      }}
-                      title="Copiar enunciado"
-                    >
-                      Copiar Enunciado
-                    </button>
-                  )}
+                  {questoesFiltradas[indiceQuestao]?.enunciado}
                 </div>
                 <div style={{ width: "100%" }}>
                   {questoesFiltradas[indiceQuestao]?.alternativas.map((alt, idx) => {
-                    let bg = corPadrao;
-                    let border = "1.5px solid #ddd";
+                    let bg = pastel.branco;
+                    let border = "1.5px solid #e5e7eb";
                     let color = pastel.texto;
+                    let shadow = "0 2px 6px rgba(0,0,0,0.04)";
                     // Corrige a verificação de resposta correta
                     const corretaLetra = typeof questaoExemplo.correta === "number"
                       ? questaoExemplo.alternativas[questaoExemplo.correta]?.letra
                       : questaoExemplo.correta;
 
+                    const isSelecionada = resposta && alt.letra === resposta;
+                    const isCorreta = alt.letra === corretaLetra;
+
                     if (resposta) {
-                      if (
-                        alt.letra === resposta &&
-                        alt.letra === corretaLetra
-                      ) {
-                        bg = corAcerto;
+                      if (isSelecionada && isCorreta) {
+                        // Correta selecionada: só borda verde forte
                         border = `2.5px solid ${corAcerto}`;
-                      } else if (
-                        alt.letra === resposta &&
-                        alt.letra !== corretaLetra
-                      ) {
-                        bg = corErro;
+                        shadow = "0 3px 10px rgba(34,197,94,0.35)";
+                      } else if (isSelecionada && !isCorreta) {
+                        // Errada selecionada: só borda rosa/vermelha
                         border = `2.5px solid ${corErro}`;
-                      } else if (
-                        mostrarGabarito &&
-                        alt.letra === corretaLetra
-                      ) {
-                        bg = corAcerto;
+                        shadow = "0 3px 10px rgba(248,113,113,0.35)";
+                      } else if (mostrarGabarito && isCorreta) {
                         border = `2.5px solid ${corAcerto}`;
+                        shadow = "0 3px 10px rgba(34,197,94,0.30)";
                       }
-                    } else if (mostrarGabarito && alt.letra === corretaLetra) {
-                      bg = corAcerto;
+                    } else if (mostrarGabarito && isCorreta) {
                       border = `2.5px solid ${corAcerto}`;
+                      shadow = "0 3px 10px rgba(34,197,94,0.30)";
                     }
+
+                    const coresLetra = {
+                      A: "#6366f1",
+                      B: "#06b6d4",
+                      C: "#22c55e",
+                      D: "#f97316",
+                      E: "#ef4444",
+                    };
+                    const corBadge = coresLetra[alt.letra] || pastel.botao;
                     return (
                       <div
                         key={alt.letra}
@@ -1320,20 +1934,19 @@ function App() {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "flex-start",
-                          marginBottom: 18,
+                          marginBottom: 14,
                           background: bg,
-                          borderRadius: 10,
-                          padding: "18px 24px",
-                          fontSize: 20,
+                          borderRadius: 999,
+                          padding: "12px 18px",
+                          fontSize: 16,
                           cursor: resposta ? "default" : "pointer",
                           border,
-                          boxShadow: resposta ? "0 2px 8px rgba(0,0,0,0.04)" : "none",
-                          transition: "background 0.2s, border 0.2s",
+                          boxShadow: shadow,
+                          transition: "border 0.2s, box-shadow 0.2s",
                           color,
                           width: "100%",
-                          minWidth: "320px",
+                          minWidth: 320,
                           maxWidth: "100%",
-                          minHeight: 48,
                           boxSizing: "border-box",
                           wordBreak: "break-word",
                         }}
@@ -1346,23 +1959,20 @@ function App() {
                             display: "inline-flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            width: 44,
-                            height: 44,
-                            borderRadius: "50%",
-                            background: pastel.botao,
-                            color: pastel.texto,
+                            width: 34,
+                            height: 34,
+                            borderRadius: 12,
+                            background: corBadge,
+                            color: "#ffffff",
                             fontWeight: "bold",
                             textAlign: "center",
-                            fontSize: 22,
-                            border: "2.5px solid #fff",
-                            boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+                            fontSize: 18,
+                            border: "2px solid #ffffff",
+                            boxShadow: "0 2px 6px rgba(15,23,42,0.25)",
                             flexShrink: 0,
-                            marginRight: 18,
-                            // Deixa mais "fofo"
+                            marginRight: 16,
                             boxSizing: "border-box",
                             letterSpacing: 1,
-                            transition: "background 0.18s, color 0.18s, border 0.18s",
-                            fontFamily: "'Segoe UI', 'Arial Rounded MT Bold', 'Arial', sans-serif",
                           }}
                         >
                           {alt.letra}
@@ -1372,6 +1982,7 @@ function App() {
                             flex: 1,
                             wordBreak: "break-word",
                             whiteSpace: "pre-line",
+                            color,
                           }}
                         >
                           {alt.texto}
@@ -1387,40 +1998,84 @@ function App() {
                       width: "100%",
                       display: "flex",
                       alignItems: "center",
+                      flexWrap: "wrap",
                     }}
                   >
                     <button
                       onClick={() => setMostrarGabarito((v) => !v)}
                       style={{
-                        background: pastel.botao,
-                        color: pastel.texto,
+                        // Botão primário roxo, combinando com a sidebar
+                        background: "#4f46e5",
+                        color: "#ffffff",
                         border: "none",
                         borderRadius: 8,
                         padding: "12px 28px",
                         fontWeight: "bold",
                         fontSize: 18,
                         cursor: "pointer",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                        marginRight: 16,
+                        boxShadow: "0 4px 14px rgba(79,70,229,0.45)",
+                        marginRight: 12,
+                        marginBottom: 10,
                       }}
                     >
                       {mostrarGabarito ? "Ocultar Gabarito" : "Mostrar Gabarito"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const texto = questoesFiltradas[indiceQuestao]?.enunciado || "";
+                        if (!texto) return;
+                        try {
+                          if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(texto);
+                          } else {
+                            const temp = document.createElement("textarea");
+                            temp.value = texto;
+                            document.body.appendChild(temp);
+                            temp.select();
+                            document.execCommand("copy");
+                            document.body.removeChild(temp);
+                          }
+                          setCopiadoEnunciado(true);
+                          setTimeout(() => setCopiadoEnunciado(false), 2000);
+                        } catch (err) {
+                          console.error("Falha ao copiar enunciado:", err);
+                        }
+                      }}
+                      style={{
+                        background: pastel.branco,
+                        color: "#4b5563",
+                        border: "1.5px solid #d1d5db",
+                        borderRadius: 8,
+                        padding: "10px 18px",
+                        fontWeight: 600,
+                        fontSize: 14,
+                        cursor: "pointer",
+                        boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+                        marginRight: 12,
+                        marginBottom: 10,
+                      }}
+                      title="Copiar enunciado para a área de transferência"
+                    >
+                      Copiar enunciado
                     </button>
                     <button
                       onClick={() => {
                         proximaQuestao();
                       }}
                       style={{
-                        background: pastel.destaque,
-                        color: pastel.texto,
-                        border: "none",
+                        // Botão secundário com contorno roxo
+                        background: pastel.branco,
+                        color: "#4f46e5",
+                        border: "1.5px solid #4f46e5",
                         borderRadius: 8,
                         padding: "12px 28px",
                         fontWeight: "bold",
                         fontSize: 18,
                         cursor: "pointer",
                         boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                        marginLeft: 8,
+                        marginLeft: 0,
+                        marginBottom: 10,
                       }}
                     >
                       Próxima Questão
@@ -1451,6 +2106,18 @@ function App() {
                         ✖ Resposta incorreta.
                       </span>
                     )}
+                    {copiadoEnunciado && (
+                      <span
+                        style={{
+                          marginLeft: 12,
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "#16a34a",
+                        }}
+                      >
+                        Enunciado copiado!
+                      </span>
+                    )}
                   </div>
                 )}
                 {mostrarGabarito && (
@@ -1479,51 +2146,181 @@ function App() {
     }
     if (aba === "ranking") {
       return (
-        <div style={{ padding: 24 }}>
-          <h2 style={{ color: pastel.botao }}>Ranking</h2>
-          <table
+        <div
+          style={{
+            padding: 24,
+            display: "flex",
+            justifyContent: "center",
+          }}
+        >
+          <div
             style={{
               width: "100%",
-              background: pastel.branco,
-              borderRadius: 8,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-              marginTop: 18,
-              color: pastel.textoTabela, // fonte da tabela
+              maxWidth: 1100,
             }}
           >
-            <thead>
-              <tr style={{ background: pastel.destaque, color: pastel.textoTabela }}>
-                <th style={{ padding: 10, textAlign: "left", color: pastel.textoTabela }}>#</th>
-                <th style={{ padding: 10, textAlign: "left", color: pastel.textoTabela }}>Usuário</th>
-                <th style={{ padding: 10, textAlign: "left", color: pastel.textoTabela }}>Pontuação</th>
-                <th style={{ padding: 10, textAlign: "left", color: pastel.textoTabela }}>Nível</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ranking.map((u, i) => (
-                <tr
-                  key={u.email}
-                  style={{
-                    background: i % 2 === 0 ? pastel.fundo : pastel.branco,
-                    color: pastel.textoTabela,
-                  }}
-                >
-                  <td style={{ padding: 10, color: pastel.textoTabela }}>{i + 1}</td>
-                  <td style={{ padding: 10, color: pastel.textoTabela }}>
-                    {u.email}
-                    {u.nome ? ` (${u.nome})` : ""}
-                  </td>
-                  <td style={{ padding: 10, color: pastel.textoTabela }}>{u.pontuacao}</td>
-                  <td style={{ padding: 10, color: pastel.textoTabela }}>{u.nivel}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            {/* Ícone de troféu centralizado */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  width: 68,
+                  height: 68,
+                  borderRadius: "50%",
+                  background:
+                    tema === "escuro"
+                      ? "linear-gradient(135deg, #facc15, #eab308)"
+                      : "linear-gradient(135deg, #fde68a, #fbbf24)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 10px 25px rgba(15,23,42,0.25)",
+                }}
+              >
+                <span style={{ fontSize: 34 }}>🏆</span>
+              </div>
+            </div>
+
+            {/* Card de ranking */}
+            <div
+              style={{
+                background: pastel.branco,
+                borderRadius: 16,
+                boxShadow: pastel.cardShadow,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  background:
+                    tema === "escuro"
+                      ? "linear-gradient(90deg, #1f2937, #111827)"
+                      : "linear-gradient(90deg, #4f46e5, #6366f1)",
+                  color: "#fff",
+                  padding: "14px 28px",
+                  display: "grid",
+                  gridTemplateColumns: "80px 1fr 140px 100px",
+                  fontWeight: 600,
+                  fontSize: 14,
+                }}
+              >
+                <span style={{ textAlign: "center" }}>#</span>
+                <span style={{ textAlign: "left" }}>Usuário</span>
+                <span style={{ textAlign: "center" }}>Pontuação</span>
+                <span style={{ textAlign: "center" }}>Nível</span>
+              </div>
+
+              <div>
+                {ranking.map((u, i) => {
+                  const pos = i + 1;
+                  let rowBg = i % 2 === 0 ? pastel.fundo : pastel.branco;
+                  let medalBg = "transparent";
+                  let medalColor = pastel.textoTabela;
+
+                  if (pos === 1) {
+                    rowBg =
+                      tema === "escuro"
+                        ? "rgba(250, 204, 21, 0.15)"
+                        : "rgba(250, 204, 21, 0.18)";
+                    medalBg = "#facc15";
+                    medalColor = "#1f2937";
+                  } else if (pos === 2) {
+                    rowBg =
+                      tema === "escuro"
+                        ? "rgba(148, 163, 184, 0.16)"
+                        : "rgba(148, 163, 184, 0.16)";
+                    medalBg = "#e5e7eb";
+                    medalColor = "#111827";
+                  } else if (pos === 3) {
+                    rowBg =
+                      tema === "escuro"
+                        ? "rgba(248, 113, 113, 0.12)"
+                        : "rgba(248, 113, 113, 0.14)";
+                    medalBg = "#f97316";
+                    medalColor = "#111827";
+                  }
+
+                  return (
+                    <div
+                      key={u.email}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "80px 1fr 140px 100px",
+                        alignItems: "center",
+                        padding: "12px 28px",
+                        background: rowBg,
+                        color: pastel.textoTabela,
+                        borderBottom:
+                          tema === "escuro"
+                            ? "1px solid rgba(148, 163, 184, 0.12)"
+                            : "1px solid rgba(148, 163, 184, 0.20)",
+                      }}
+                    >
+                      <div style={{ textAlign: "center" }}>
+                        <div
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 999,
+                            background: medalBg,
+                            color: medalColor,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 700,
+                            fontSize: 13,
+                            border:
+                              medalBg === "transparent"
+                                ? `1px solid ${tema === "escuro" ? "#4b5563" : "#d1d5db"}`
+                                : "none",
+                          }}
+                        >
+                          {pos}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          paddingRight: 12,
+                          textAlign: "left",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={u.nome ? `${u.email} (${u.nome})` : u.email}
+                      >
+                        <span style={{ fontWeight: 500 }}>
+                          {u.nome ? u.nome : "Jogador"}
+                        </span>
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            fontSize: 12,
+                            color: pastel.textoSecundario,
+                          }}
+                        >
+                          {u.email}
+                        </span>
+                      </div>
+
+                      <div style={{ textAlign: "center", fontWeight: 600 }}>
+                        {u.pontuacao ?? 0}
+                      </div>
+
+                      <div style={{ textAlign: "center" }}>{u.nivel ?? 1}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       );
-    }
-    if (aba === "config") {
-      return null;
     }
     if (aba === "sair") {
       setTela("auth");
@@ -1536,6 +2333,16 @@ function App() {
       return null;
     }
     if (aba === "perfil") {
+      const coresAvatar = [
+        "#8b5cf6",
+        "#06b6d4",
+        "#22c55e",
+        "#facc15",
+        "#f97316",
+        "#ef4444",
+        "#ec4899",
+      ];
+
       return (
         <div
           style={{
@@ -1551,251 +2358,278 @@ function App() {
         >
           <div
             style={{
-              width: "100%",
-              maxWidth: 480,
+              width: "92vw",
+              maxWidth: 900,
               background: pastel.branco,
-              borderRadius: 18,
-              boxShadow: "0 4px 24px rgba(0,0,0,0.10)",
-              border: `2.5px solid ${pastel.botao}`,
-              padding: "32px 40px",
-              marginTop: 48,
+              borderRadius: 24,
+              boxShadow: "0 18px 45px rgba(15,23,42,0.12)",
+              padding: "26px 40px 32px 40px",
+              marginTop: 40,
               marginBottom: 32,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
+              boxSizing: "border-box",
             }}
           >
-            <h2 style={{ color: pastel.botao, fontWeight: "bold", fontSize: 28, marginBottom: 24 }}>
-              Perfil
-            </h2>
-            <div style={{ marginBottom: 24 }}>
+            {/* Barra gradiente no topo, como no layout de referência */}
+            <div
+              style={{
+                width: "100%",
+                height: 18,
+                borderRadius: 999,
+                marginBottom: 28,
+                background:
+                  "linear-gradient(90deg, #4b2be8 0%, #44c2ff 45%, #25e0c1 100%)",
+              }}
+            />
+            {/* Avatar central */}
+            <div style={{ marginBottom: 26 }}>
               <div
                 style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: "50%",
-                  background: avatarColor,
+                  width: 84,
+                  height: 84,
+                  borderRadius: 26,
+                  background: avatarColor || "linear-gradient(135deg, #4b2be8 0%, #8b5cf6 40%, #ec4899 100%)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   fontWeight: "bold",
-                  fontSize: 28,
-                  color: "#fff",
-                  border: `2px solid ${pastel.botao}`,
-                  margin: "0 auto",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+                  fontSize: 32,
+                  color: "#ffffff",
+                  boxShadow: "0 10px 30px rgba(15,23,42,0.35)",
                 }}
               >
                 {nome?.[0]?.toUpperCase() || "?"}
               </div>
             </div>
-            {/* Nome editável igual ao início */}
+
+            {/* Campo Nome */}
             <div style={{ width: "100%", marginBottom: 18 }}>
-              <div style={{
-                fontWeight: "bold",
-                fontSize: 18,
-                color: pastel.texto,
-                marginBottom: 4,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}>
-                <input
-                  type="text"
-                  value={nome}
-                  maxLength={20}
-                  onChange={(e) => setNome(e.target.value)}
-                  onBlur={() => atualizarPerfilBackend(nome, avatarColor, descricao, tema)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      atualizarPerfilBackend(nome, avatarColor, descricao, tema);
-                      e.target.blur();
-                    }
-                  }}
-                  style={{
-                    fontWeight: "bold",
-                    fontSize: 18,
-                    color: pastel.texto,
-                    background: "transparent",
-                    border: "1.5px solid #ccc",
-                    borderRadius: 6,
-                    padding: "2px 10px",
-                    outline: "none",
-                    width: "auto",
-                    minWidth: 60,
-                    maxWidth: 220,
-                    marginRight: 6,
-                    transition: "border 0.2s",
-                  }}
-                />
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 14,
+                  color: "#6b7280",
+                  marginBottom: 6,
+                }}
+              >
+                Nome
+              </div>
+              <input
+                type="text"
+                value={nome}
+                maxLength={20}
+                onChange={(e) => setNome(e.target.value)}
+                onBlur={() => atualizarPerfilBackend(nome, avatarColor, descricao, tema)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    atualizarPerfilBackend(nome, avatarColor, descricao, tema);
+                    e.target.blur();
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "#f3f4f6",
+                  fontSize: 15,
+                  color: pastel.texto,
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            {/* Cor do Avatar - bolinhas coloridas */}
+            <div style={{ width: "100%", marginBottom: 18 }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 14,
+                  color: "#6b7280",
+                  marginBottom: 6,
+                }}
+              >
+                Cor do Avatar
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                {coresAvatar.map((cor) => {
+                  const selecionada = avatarColor === cor;
+                  return (
+                    <button
+                      key={cor}
+                      type="button"
+                      onClick={() => {
+                        setAvatarColor(cor);
+                        atualizarPerfilBackend(nome, cor, descricao, tema);
+                      }}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 12,
+                        border: selecionada
+                          ? "3px solid #ffffff"
+                          : "2px solid rgba(255,255,255,0.0)",
+                        outline: selecionada
+                          ? "2px solid #4f46e5"
+                          : "2px solid transparent",
+                        padding: 0,
+                        background: cor,
+                        cursor: "pointer",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                      }}
+                    />
+                  );
+                })}
               </div>
             </div>
-            <div style={{ width: "100%", marginBottom: 24 }}>
-              <label style={{ fontWeight: "bold", fontSize: 18, color: pastel.texto }}>
-                Cor do Avatar:
-                <input
-                  type="color"
-                  value={avatarColor}
-                  onChange={(e) => {
-                    setAvatarColor(e.target.value);
-                    atualizarPerfilBackend(nome, e.target.value, descricao, tema);
-                  }}
-                  style={{
-                    marginLeft: 10,
-                    width: 36,
-                    height: 36,
-                    border: "none",
-                    background: "none",
-                    verticalAlign: "middle",
-                  }}
-                />
-              </label>
+
+            {/* Campo Descrição */}
+            <div style={{ width: "100%", marginBottom: 22 }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 14,
+                  color: "#6b7280",
+                  marginBottom: 6,
+                }}
+              >
+                Descrição
+              </div>
+              <textarea
+                value={descricao}
+                maxLength={200}
+                onChange={(e) => setDescricao(e.target.value)}
+                onBlur={() => atualizarPerfilBackend(nome, avatarColor, descricao, tema)}
+                rows={3}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "#f3f4f6",
+                  fontSize: 15,
+                  color: pastel.texto,
+                  resize: "vertical",
+                  outline: "none",
+                }}
+                placeholder="Conte um pouco sobre você..."
+              />
             </div>
-            {/* Campo de descrição */}
-            <div style={{ width: "100%", marginBottom: 24 }}>
-              <label style={{ fontWeight: "bold", fontSize: 18, color: pastel.texto }}>
-                Descrição:
-                <textarea
-                  value={descricao}
-                  maxLength={200}
-                  onChange={(e) => setDescricao(e.target.value)}
-                  onBlur={() => atualizarPerfilBackend(nome, avatarColor, descricao, tema)}
-                  rows={3}
-                  style={{
-                    marginLeft: 10,
-                    padding: 6,
-                    borderRadius: 6,
-                    border: "1px solid #ccc",
-                    background: pastel.fundo,
-                    fontSize: 16,
-                    width: "90%",
-                    resize: "vertical",
-                    color: pastel.texto,
-                  }}
-                  placeholder="Conte um pouco sobre você..."
-                />
-              </label>
-            </div>
-            {/* Escolha de tema */}
-            <div style={{ width: "100%", marginBottom: 24 }}>
-              <label style={{ fontWeight: "bold", fontSize: 18, color: pastel.texto }}>
-                Tema:
-                <select
-                  value={tema}
-                  onChange={e => {
-                    setTema(e.target.value);
-                    atualizarPerfilBackend(nome, avatarColor, descricao, e.target.value);
-                  }}
-                  style={{
-                    marginLeft: 10,
-                    padding: 6,
-                    borderRadius: 6,
-                    border: "1px solid #ccc",
-                    background: pastel.fundo,
-                    fontSize: 16,
-                    color: pastel.texto,
-                  }}
-                >
-                  <option value="claro">Claro</option>
-                  <option value="escuro">Escuro</option>
-                </select>
-              </label>
-            </div>
-            <div style={{ color: pastel.texto, fontSize: 14, marginTop: 8 }}>
-              Personalize seu nome, cor do avatar, descrição e tema!
+
+            {/* Botão de salvar alterações, ocupando toda a largura */}
+            <button
+              type="button"
+              onClick={() => atualizarPerfilBackend(nome, avatarColor, descricao, tema)}
+              style={{
+                width: "100%",
+                marginTop: 4,
+                padding: "12px 16px",
+                borderRadius: 999,
+                border: "none",
+                background:
+                  "linear-gradient(90deg, #4b2be8 0%, #6d28d9 50%, #4f46e5 100%)",
+                color: "#ffffff",
+                fontWeight: 600,
+                fontSize: 15,
+                cursor: "pointer",
+                boxShadow: "0 6px 18px rgba(79,70,229,0.45)",
+              }}
+            >
+              Salvar Alterações
+            </button>
+
+            <div
+              style={{
+                color: "#6b7280",
+                fontSize: 13,
+                marginTop: 14,
+                textAlign: "center",
+              }}
+            >
+              Personalize seu nome, cor do avatar e descrição.
             </div>
           </div>
         </div>
       );
     }
     if (aba === "simulados") {
-      // Pegue todos os anos únicos das questões de exemplo
-      const anosSimulados = [...new Set(questoesExemplo.map((q) => q.ano))];
-      // Cores para os quadrados (pode expandir)
-      const cores = [
-        "#a3a3ff",
-        "#ffd700",
-        "#90ee90",
-        "#ffb6c1",
-        "#87ceeb",
-        "#ffa07a",
-        "#e0e0e0",
-      ];
       return (
-        <div style={{
-          padding: 32,
-          minHeight: "100vh",
-          background: pastel.fundo,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-        }}>
-          {/* Quadro azul e branco igual ao do nível */}
+        <div
+          style={{
+            padding: 32,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: "calc(100vh - 120px)",
+          }}
+        >
           <div
             style={{
-              width: "80vw",
-              maxWidth: 600,
-              margin: "0 auto",
-              marginBottom: 32,
+              width: "92vw",
+              maxWidth: 1100,
               background: pastel.branco,
-              borderRadius: 16,
-              boxShadow: "0 2px 16px rgba(0,0,0,0.08)",
-              border: `2.5px solid ${pastel.botao}`,
-              padding: "32px 40px",
+              borderRadius: 18,
+              boxShadow: pastel.cardShadow,
+              padding: "48px 40px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
             }}
           >
-            <h2 style={{ color: pastel.botao, fontWeight: "bold", fontSize: 28, marginBottom: 12 }}>
-              Simulados ENEM
-            </h2>
-            <div style={{ color: pastel.texto, fontSize: 18, marginBottom: 8 }}>
-              Clique em um ano para ver as questões daquele ENEM.
+            {/* Ícone em cartão */}
+            <div
+              style={{
+                width: 76,
+                height: 76,
+                borderRadius: 24,
+                background:
+                  tema === "escuro"
+                    ? "linear-gradient(135deg, #4f46e5, #6366f1)"
+                    : "linear-gradient(135deg, #4f46e5, #6366f1)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 14px 30px rgba(15,23,42,0.35)",
+                marginBottom: 28,
+              }}
+            >
+              <span style={{ fontSize: 36, color: "#ffffff" }}>🎓</span>
             </div>
-            <div style={{ color: pastel.botao, fontSize: 16 }}>
-              (Em breve, cada simulado terá suas próprias questões!)
+
+            {/* Barra em gradiente abaixo do ícone */}
+            <div
+              style={{
+                width: 180,
+                height: 14,
+                borderRadius: 999,
+                background:
+                  tema === "escuro"
+                    ? "linear-gradient(90deg, #4f46e5, #22d3ee)"
+                    : "linear-gradient(90deg, #4f46e5, #22d3ee)",
+                marginBottom: 26,
+              }}
+            />
+
+            {/* Texto informativo */}
+            <div
+              style={{
+                fontSize: 18,
+                color: pastel.texto,
+                textAlign: "center",
+                maxWidth: 520,
+              }}
+            >
+              Em breve você poderá realizar simulados completos do ENEM aqui.
             </div>
-          </div>
-          {/* Cards dos anos */}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 24,
-              justifyContent: "center",
-              width: "80vw",
-              maxWidth: 900,
-            }}
-          >
-            {anosSimulados.map((ano, idx) => (
-              <div
-                key={ano}
-                style={{
-                  background: idx % 2 === 0 ? pastel.botao : pastel.branco,
-                  borderRadius: 16,
-                  padding: "32px 48px",
-                  fontSize: 28,
-                  fontWeight: "bold",
-                  color: pastel.texto,
-                  cursor: "pointer",
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
-                  transition: "background 0.2s",
-                  minWidth: 180,
-                  textAlign: "center",
-                  border: `2px solid ${pastel.botao}`,
-                }}
-                onClick={() => {
-                  setAba("questoes");
-                  setFiltros({ ...filtros, ano: true });
-                  setFiltroAno(ano);
-                }}
-                title={`Ver questões do ENEM ${ano}`}
-              >
-                ENEM {ano}
-              </div>
-            ))}
           </div>
         </div>
       );
@@ -1950,77 +2784,205 @@ function App() {
       {/* Removido: antigo logo flutuante no topo */}
       <div
         style={{
-          minHeight: "100vh",
-          minWidth: "100vw",
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100vh", // garante altura exata da tela
           background: pastel.fundo,
           display: "flex",
           flexDirection: "row",
+          overflowX: "hidden",
+          // Sidebar fica fixa; só o conteúdo das questões rola
+          overflowY: "hidden",
         }}
       >
-        {/* Menu lateral novo design */}
+        {/* Menu lateral estilo dashboard da tela de exemplo */}
         <nav
           style={{
-            width: 240,
-            background: pastel.branco,
-            borderRight: `2.5px solid ${pastel.botao}`,
-            minHeight: "100vh",
-            paddingTop: 36,
-            boxShadow: "2px 0 8px rgba(0,0,0,0.04)",
+            width: 260,
+            background:
+              "linear-gradient(180deg, #3b31e5 0%, #4f46e5 40%, #6d28d9 100%)",
+            height: "100vh", // exatamente a altura da tela, sem passar
+            boxSizing: "border-box", // inclui padding dentro da altura total
+            paddingTop: 24,
+            paddingBottom: 16,
+            boxShadow: "2px 0 16px rgba(0,0,0,0.18)",
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
+            alignItems: "stretch",
             gap: 0,
             position: "relative",
+            overflowX: "hidden",
+            overflowY: "hidden", // a barra inteira nunca passa da altura da tela
           }}
         >
           {/* Logo no topo do menu */}
           <div
             style={{
               fontWeight: "bold",
-              fontSize: 26,
-              color: pastel.texto,
-              background: pastel.botao,
-              borderRadius: 10,
-              padding: "10px 28px",
-              marginBottom: 38,
-              marginTop: 0,
-              boxShadow: "0 2px 10px rgba(126,198,247,0.13)",
+              fontSize: 24,
+              color: "#ffffff",
+              background: "rgba(15,23,42,0.18)",
+              borderRadius: 16,
+              padding: "8px 18px",
+              margin: "0 24px 26px 24px",
+              boxShadow: "0 4px 18px rgba(0,0,0,0.25)",
               letterSpacing: 1,
-              textAlign: "center",
             }}
           >
             QuizENEM
           </div>
-          <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
-            {abas.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setAba(item.id)}
-                style={{
-                  width: "88%",
-                  margin: "0 auto 10px auto",
-                  background: aba === item.id ? pastel.botao : "none",
-                  color: pastel.texto,
-                  border: aba === item.id ? `2.5px solid #2222` : "2.5px solid transparent",
-                  borderRadius: 12,
-                  padding: "14px 0",
-                  fontWeight: aba === item.id ? "bold" : "normal",
-                  fontSize: 18,
-                  cursor: "pointer",
-                  textAlign: "center",
-                  boxShadow: aba === item.id ? "0 2px 10px rgba(126,198,247,0.13)" : "none",
-                  transition: "background 0.18s, border 0.18s, box-shadow 0.18s",
-                  outline: "none",
-                }}
-              >
-                {item.nome}
-              </button>
-            ))}
+          <div
+            style={{
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              paddingInline: 16,
+              flex: 1,
+              minHeight: 0, // permite o scroll interno funcionar no flex
+              overflowY: "auto", // apenas a lista de abas rola, mantendo o botão Sair fixo
+            }}
+          >
+            {abas
+              .filter((item) => item.id !== "sair")
+              .map((item) => {
+                const ativo = aba === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setAba(item.id)}
+                    style={{
+                      width: "84%",
+                      margin: "0 auto 4px auto",
+                      background: ativo
+                        ? "rgba(255,255,255,0.18)"
+                        : "transparent",
+                      color: "#e5e7ff",
+                      border: "none",
+                      borderRadius: 999,
+                      padding: "8px 14px",
+                      fontWeight: ativo ? 600 : 500,
+                      fontSize: 14,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      boxShadow: ativo
+                        ? "0 3px 10px rgba(0,0,0,0.25)"
+                        : "none",
+                      transition:
+                        "background 0.18s, box-shadow 0.18s, transform 0.12s",
+                      outline: "none",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-start",
+                        gap: 10,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 999,
+                          backgroundColor: ativo
+                            ? "rgba(255,255,255,0.32)"
+                            : "rgba(15,23,42,0.22)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 16,
+                        }}
+                      >
+                        {item.icone}
+                      </span>
+                      <span>{item.nome}</span>
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+          {/* Botão Sair fixado na parte inferior do menu */}
+          <div
+            style={{
+              width: "100%",
+              paddingInline: 16,
+              marginTop: 8,
+            }}
+          >
+            {abas
+              .filter((item) => item.id === "sair")
+              .map((item) => {
+                const ativo = aba === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setAba(item.id)}
+                    style={{
+                      width: "84%",
+                      margin: "0 auto 4px auto",
+                      background: ativo
+                        ? "rgba(255,255,255,0.18)"
+                        : "transparent",
+                      color: "#e5e7ff",
+                      border: "none",
+                      borderRadius: 999,
+                      padding: "8px 14px",
+                      fontWeight: ativo ? 600 : 500,
+                      fontSize: 14,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      boxShadow: ativo
+                        ? "0 3px 10px rgba(0,0,0,0.25)"
+                        : "none",
+                      transition:
+                        "background 0.18s, box-shadow 0.18s, transform 0.12s",
+                      outline: "none",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-start",
+                        gap: 10,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 999,
+                          backgroundColor: ativo
+                            ? "rgba(255,255,255,0.32)"
+                            : "rgba(15,23,42,0.22)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 16,
+                        }}
+                      >
+                        {item.icone}
+                      </span>
+                      <span>{item.nome}</span>
+                    </div>
+                  </button>
+                );
+              })}
           </div>
         </nav>
         {/* Conteúdo da aba */}
         <main
-          style={{ flex: 1, background: pastel.fundo, minHeight: "100vh" }}
+          style={{
+            flex: 1,
+            background: pastel.fundo,
+            minHeight: "100vh",
+            height: "100vh",
+            overflowY: "auto",
+          }}
         >
           {renderAba()}
         </main>
@@ -2031,8 +2993,6 @@ function App() {
             position: "fixed",
             top: 0,
             left: 0,
-           
-           
             width: "100vw",
             height: "100vh",
             background: "rgba(0,0,0,0.25)",
@@ -2071,88 +3031,148 @@ function App() {
       <div
         style={{
           position: "fixed",
-          top: 10,
-          left: 10,
-          background: "#fff",
-          color: "#222",
-          borderRadius: 6,
+          top: 12,
+          left: 12,
+          background: pastel.branco,
+          color: pastel.texto,
+          borderRadius: 999,
           padding: "6px 14px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
-          fontSize: 14,
+          boxShadow: "0 6px 18px rgba(15,23,42,0.16)",
+          fontSize: 13,
           zIndex: 1000,
-          opacity: 0.95,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
         }}
       >
-        {statusApi}
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background:
+              statusApi === "API conectada!" ? "#22c55e" : "#f97316",
+          }}
+        />
+        <span>{statusApi}</span>
       </div>
       <div
         style={{
-          minHeight: "100vh",
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100vw",
+          height: "100vh",
           minWidth: "100vw",
+          minHeight: "100vh",
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          background: pastel.fundo,
+          background:
+            "radial-gradient(circle at top left, #eef2ff 0%, #fdf2ff 45%, #f4f5fb 100%)",
+          zIndex: 0,
+          overflow: "hidden",
         }}
       >
         <div
-
           style={{
             padding: 0,
-            borderRadius: 12,
+            borderRadius: 24,
             background: pastel.branco,
-            boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
-            minWidth: 320,
-           
-            textAlign: "center",
+            boxShadow: pastel.cardShadow,
+            width: "100%",
+            maxWidth: 460,
+            minWidth: 0,
+            textAlign: "left",
             overflow: "hidden",
           }}
         >
-          {/* Logo e nome no topo da caixa */}
+          {/* Topo com logo e barra gradiente, seguindo o restante do app */}
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 12,
-              background: pastel.botao, // fundo azul pastel
-              padding: "18px 0 12px 0",
-              borderTopLeftRadius: 12,
-              borderTopRightRadius: 12,
-              borderBottom: `1.5px solid ${pastel.fundo}`,
+              padding: "24px 40px 18px 40px",
+              background: pastel.branco,
             }}
           >
-            <span
+            <div
               style={{
-                fontSize: 28,
-                fontWeight: "bold",
-                color: pastel.texto,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                marginBottom: 10,
               }}
             >
-              QuizENEM
-            </span>
-         
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  background:
+                    "linear-gradient(135deg, #4b2be8 0%, #8b5cf6 45%, #ec4899 100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: 22,
+                  boxShadow: "0 8px 18px rgba(15,23,42,0.35)",
+                }}
+              >
+                Q
+              </div>
+              <span
+                style={{
+                  fontSize: 26,
+                  fontWeight: "bold",
+                  color: pastel.texto,
+                  letterSpacing: 0.5,
+                }}
+              >
+                QuizENEM
+              </span>
+            </div>
+            <div
+              style={{
+                width: "100%",
+                height: 14,
+                borderRadius: 999,
+                background:
+                  "linear-gradient(90deg, #4b2be8 0%, #44c2ff 45%, #25e0c1 100%)",
+              }}
+            />
           </div>
           <div
             style={{
-              padding: 32,
-              borderRadius: 12,
+              padding: "26px 40px 32px 40px",
+              borderRadius: 24,
               background: pastel.branco,
-              minWidth: 320,
-              textAlign: "center",
+              textAlign: "left",
             }}
           >
             <form onSubmit={handleSubmit}>
               <h2
                 style={{
-                  background: pastel.destaque,
-                  borderRadius: 8,
-                  padding: 6,
-                  marginTop: 0,
+                  background: "transparent",
+                  borderRadius: 0,
+                  padding: 0,
+                  marginTop: 4,
+                  color: pastel.texto,
+                  fontSize: 24,
                 }}
               >
                 {isLogin ? "Login" : "Cadastro"}
               </h2>
+              <div
+                style={{
+                  marginTop: 4,
+                  marginBottom: 18,
+                  fontSize: 13,
+                  color: pastel.textoSecundario,
+                }}
+              >
+                Acesse sua conta para continuar estudando.
+              </div>
               <input
                 type="email"
                 placeholder="E-mail"
@@ -2161,11 +3181,13 @@ function App() {
                 required
                 style={{
                   marginBottom: 10,
-                  width: "90%",
-                  padding: 8,
-                  borderRadius: 6,
-                  border: "1px solid #ccc",
-                  background: pastel.fundo,
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1.5px solid ${pastel.inputBorder}`,
+                  background: pastel.inputBg,
+                  color: pastel.inputText,
+                  outline: "none",
                 }}
               />
               <br />
@@ -2176,12 +3198,14 @@ function App() {
                 onChange={(e) => setSenha(e.target.value)}
                 required
                 style={{
-                  marginBottom: 10,
-                  width: "90%",
-                  padding: 8,
-                  borderRadius: 6,
-                  border: "1px solid #ccc",
-                  background: pastel.fundo,
+                  marginBottom: 4,
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1.5px solid ${pastel.inputBorder}`,
+                  background: pastel.inputBg,
+                  color: pastel.inputText,
+                  outline: "none",
                 }}
               />
               <br />
@@ -2189,25 +3213,28 @@ function App() {
                 style={{
                   display: "flex",
                   gap: 8,
-                  justifyContent: "center",
-                  marginTop: 8,
+                  justifyContent: "flex-start",
+                  marginTop: 18,
                 }}
               >
                 <button
                   type="submit"
                   disabled={isLoading}
                   style={{
-                    width: 200,
-                    padding: 10,
-                    background: pastel.botao,
-                    color: pastel.texto,
+                    minWidth: 0,
+                    padding: "11px 26px",
+                    background:
+                      "linear-gradient(135deg, #4b2be8 0%, #44c2ff 45%, #25e0c1 100%)",
+                    color: "#ffffff",
                     border: "none",
-                    borderRadius: 6,
+                    borderRadius: 999,
                     fontWeight: "bold",
                     cursor: isLoading ? "default" : "pointer",
                     transition: "background 0.2s",
                     opacity: isLoading ? 0.7 : 1,
                   }}
+                  onMouseOver={e => { if (tema === "escuro") e.currentTarget.style.background = pastel.botaoBgHover; }}
+                  onMouseOut={e => { if (tema === "escuro") e.currentTarget.style.background = pastel.botao; }}
                 >
                   {isLoading
                     ? isLogin
@@ -2223,11 +3250,10 @@ function App() {
                   onClick={handleDebug}
                   disabled={isLoading}
                   style={{
-                    padding: 10,
-                    background: "#f0f0f0",
-                    color: pastel.texto,
-                    border: "1px solid #ddd",
-
+                    padding: "9px 14px",
+                    background: pastel.destaque,
+                    color: pastel.inputText,
+                    border: `1.5px solid ${pastel.inputBorder}`,
                     borderRadius: 6,
                     cursor: isLoading ? "default" : "pointer",
                   }}
@@ -2241,10 +3267,10 @@ function App() {
                   onClick={handleResetPassword}
                   disabled={isLoading}
                   style={{
-                    padding: 10,
-                    background: "#ffeedd",
-                    color: pastel.texto,
-                    border: "1px solid #e0c8b0",
+                    padding: "9px 14px",
+                    background: tema === "escuro" ? "#4b5563" : "#fee2e2",
+                    color: pastel.inputText,
+                    border: `1.5px solid ${pastel.inputBorder}`,
                     borderRadius: 6,
                     cursor: isLoading ? "default" : "pointer",
                   }}
@@ -2257,14 +3283,13 @@ function App() {
             <button
               onClick={() => setIsLogin(!isLogin)}
               style={{
-                marginTop: 10,
+                marginTop: 14,
                 background: "none",
                 border: "none",
                 color: pastel.botao,
-                               cursor: "pointer",
+                cursor: "pointer",
                 textDecoration: "underline",
-               
-                fontWeight: "bold",
+                fontWeight: 600,
               }}
             >
               {isLogin
